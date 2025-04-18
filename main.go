@@ -1,7 +1,6 @@
 package main
 
 import (
-
 	"fmt"
 	"os"
 	"time"
@@ -10,7 +9,8 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-
+	
+	"sr05/Utils"
 )
 
 // File where the text will be saved
@@ -18,7 +18,6 @@ const saveFilePath = "save.txt"
 
 // Interval in seconds between autosaves
 const autoSaveInterval = 1 * time.Second
-
 
 // Load the text from the save file
 func loadTextFromFile(path string) string {
@@ -35,13 +34,11 @@ func loadTextFromFile(path string) string {
 	return string(data)
 }
 
-
 // Write the text into the save file
 func saveTextToFile(path string, content string) error {
 
 	return os.WriteFile(path, []byte(content), 0644)
 }
-
 
 // Process the current text, and apply some operations
 // The minimum is to save the text into the file
@@ -67,8 +64,20 @@ func processText(content string) error {
 	return err
 }
 
-
 func main() {
+
+	// === Test difftools ===
+	old := "Je mange du poulet c'est très bon, voila bisou"
+	new := "Je mange des crevettes c'est vraiment très bon, allez bisous"
+
+	diffs := difftools.ComputeDiffs(old, new)
+	fmt.Printf("Diffs : %+v\n", diffs)
+
+	old = difftools.ApplyDiffs(old, diffs)
+
+	fmt.Println(old)
+
+	// === End ===
 
 	// Create the app
 	myApp := app.New()
