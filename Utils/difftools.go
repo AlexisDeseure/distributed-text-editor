@@ -1,5 +1,14 @@
 package difftools
 
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+)
+
+var saveFilePath string = "modifs.log"
 
 // A Diff object describes a modification that was applied to a text
 type Diff struct {
@@ -106,6 +115,40 @@ func ComputeDiffs(oldText, newText string) []Diff {
     return diffs
 }
 
+// Apply diffs to a base string, with the correct order
+func ApplyDiffsSequential(base string, diffs []Diff) string {
+    rBase := []rune(base)
+
+    for _, d := range diffs {
+        // clamp pos
+        pos := d.Pos
+        if pos < 0 {
+            pos = 0
+        }
+        if pos > len(rBase) {
+            pos = len(rBase)
+        }
+
+        // clamp oldLen
+        oldLen := d.NbDeleted
+        if oldLen < 0 {
+            oldLen = 0
+        }
+        if pos+oldLen > len(rBase) {
+            oldLen = len(rBase) - pos
+        }
+
+        before := rBase[:pos]
+        after  := rBase[pos+oldLen:]
+        ins    := []rune(d.NewText)
+
+        // The diff is applied
+        rBase = append(before, append(ins, after...)...)
+    }
+
+    return string(rBase)
+}
+
 
 // This method applies one or multiple Diffs to a base text, and returns the resulting text
 // Diffs are applied from last to first so that the indices stay valid after each Diff is applied
@@ -133,4 +176,104 @@ func ApplyDiffs(base string, diffs []Diff) string {
 
     // Return the new text
     return string(rBase)
+}
+
+// Convert a diff object to a json string
+func (d Diff) String() string {
+    b, _ := json.Marshal(d)
+    return string(b)
+}
+
+// Get a list of diff objects based on two version of a text, and then save those diffs to the file
+func SaveModifs(oldText, newText string) error {
+    for _, d := range ComputeDiffs(oldText, newText) {
+        if err := appendDiffToFile(d); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+// Convert a diff object to a string, and save it to the file
+func appendDiffToFile(d Diff) error {
+    f, err := os.OpenFile(saveFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    if _, err := f.WriteString(d.String() + "\n"); err != nil {
+        return err
+    }
+    return nil
+}
+
+// Read the save file starting from a given line, and get a list of diff objects
+func readDiffsFromFile(startLine int) ([]Diff, error) {
+    initialize()
+    f, err := os.Open(saveFilePath)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
+
+    var diffs []Diff
+    scanner := bufio.NewScanner(f)
+    line := -1
+    for scanner.Scan() {
+        line++
+        if line < startLine {
+            continue
+        }
+        var d Diff
+        if err := json.Unmarshal(scanner.Bytes(), &d); err != nil {
+            return nil, fmt.Errorf("ligne %d: %w", line, err)
+        }
+        diffs = append(diffs, d)
+    }
+    if err := scanner.Err(); err != nil {
+        return nil, err
+    }
+    return diffs, nil
+}
+
+func GetUpdatedTextFromFile(startLine int, baseText string) (string, error) {
+    diffs, err := readDiffsFromFile(startLine)
+    if err != nil {
+        return baseText, err
+    }
+    return ApplyDiffsSequential(baseText, diffs), nil
+}
+
+// Get the number of lines (diff objects) that were written after a given line
+func LineCountSince(startLine int) int {
+    initialize()
+    f, err := os.Open(saveFilePath)
+    if err != nil {
+        // If the file cannot be opened, the method considers that there is no new line
+        return 0
+    }
+    defer f.Close()
+
+    scanner := bufio.NewScanner(f)
+    lineNum, count := 0, 0
+    for scanner.Scan() {
+        lineNum++
+        if lineNum >= startLine {
+            count++
+        }
+    }
+    return count
+}
+
+func initialize() {
+    // Make sure that the log file exists before using it
+    if _, err := os.Stat(saveFilePath); os.IsNotExist(err) {
+        // Create an empty file
+        if f, err := os.Create(saveFilePath); err != nil {
+            log.Fatalf("Couldn't create %s : %v", saveFilePath, err)
+        } else {
+            f.Close()
+        }
+    }
 }
