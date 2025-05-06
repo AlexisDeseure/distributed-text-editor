@@ -91,7 +91,7 @@ func (inst *Instance) sendLoop() {
 }
 
 // mergeClocks met à jour inst.clock en prenant max(remote, local)
-func mergeClocks(local, remote VectorClock) {
+func mergeClocks(local VectorClock, remote VectorClock) {
 	for id, t := range remote {
 		if local[id] < t {
 			local[id] = t
