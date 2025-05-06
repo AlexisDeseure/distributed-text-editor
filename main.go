@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	// "fmt"
 	"io"
 	"log"
 	"os"
@@ -100,42 +100,42 @@ func mergeClocks(local VectorClock, remote VectorClock) {
 }
 
 // File where the text will be saved
-const saveFilePath = "save.txt"
+// const saveFilePath = "save.txt"
 
 // Interval in seconds between autosaves
 const autoSaveInterval = 1 * time.Second
 
 // Write the text into the save file
-func saveTextToFile(path string, content string) error {
+// func saveTextToFile(path string, content string) error {
 
-	return os.WriteFile(path, []byte(content), 0644)
-}
+// 	return os.WriteFile(path, []byte(content), 0644)
+// }
 
 // Process the current text, and apply some operations
 // The minimum is to save the text into the file
 // Then the text can also be sent to another connected device
 // This method is called periodically (see 'autoSaveInterval'), and one last time when the app closes
 // It is never called if the text has not changed since last save
-func processText(oldContent string, newContent string) error {
+// func processText(oldContent string, newContent string) error {
 
-	// Save the text and get a possible error
-	err := saveTextToFile(saveFilePath, newContent)
+// 	// Save the text and get a possible error
+// 	err := saveTextToFile(saveFilePath, newContent)
 
-	difftools.SaveModifs(oldContent, newContent)
+// 	difftools.SaveModifs(oldContent, newContent)
 
-	// Print the error
-	if err != nil {
+// 	// Print the error
+// 	if err != nil {
 
-		fmt.Println("Error while saving:", err)
+// 		fmt.Println("Error while saving:", err)
 
-	// Notify that the text was successfully saved
-	} else {
+// 	// Notify that the text was successfully saved
+// 	} else {
 
-		fmt.Println("Autosave...")
-	}
+// 		fmt.Println("Autosave...")
+// 	}
 
-	return err
-}
+// 	return err
+// }
 
 func main() {
 
