@@ -17,7 +17,7 @@ import (
 	"sr05/Utils"
 )
 
-type VectorClock map[string]int
+type VectorClock map[int]int
 
 type MessageType string
 
@@ -36,7 +36,7 @@ type Message struct {
 // Instance gère le ring, envoie/recevra les horloges
 
 type Instance struct {
-	id        string
+	id        int
 	clock     VectorClock
 	prevPipe  io.ReadCloser
 	nextPipe  io.WriteCloser
@@ -51,7 +51,7 @@ type Instance struct {
 }
 
 // NewInstance crée et lance les goroutines d'envoi/réception
-func NewInstance(id string, prev io.ReadCloser, next io.WriteCloser) *Instance {
+func NewInstance(id int, prev io.ReadCloser, next io.WriteCloser) *Instance {
 	inst := &Instance{
 		id:        id,
 		clock:     make(VectorClock),
@@ -105,7 +105,7 @@ const autoSaveInterval = 1 * time.Second
 
 func main() {
 
-	id := flag.String("n", "0", "id site")
+	id := flag.Int("n", 0, "id site")
 	inst := NewInstance(*id, os.Stdin, os.Stdout)
 
 	// Create the app
