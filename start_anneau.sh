@@ -9,7 +9,7 @@ if ! [[ "$N" =~ ^[0-9]+$ ]] || [ "$N" -lt 2 ]; then
 fi
 
 # Crée le FIFO (tube nommé)
-FIFO="/tmp/f_anneau"
+FIFO="/tmp/fifo_anneau"
 RUN_COMMAND="go run main.go -n"
 
 if [[ -p $FIFO ]]; then
