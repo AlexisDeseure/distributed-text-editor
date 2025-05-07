@@ -2,19 +2,19 @@ package main
 
 import (
 	"encoding/json"
-	// "fmt"
+	"flag"
+	"fmt"
 	"io"
 	"log"
-	"os"
 	"sync"
 	"time"
-	"flag"
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
 
 	"sr05/Utils"
+
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/widget"
 )
 
 type VectorClock map[int]int
@@ -36,17 +36,17 @@ type Message struct {
 // Instance gère le ring, envoie/recevra les horloges
 
 type Instance struct {
-	id        int
-	clock     VectorClock
-	prevPipe  io.ReadCloser
-	nextPipe  io.WriteCloser
+	id       int
+	clock    VectorClock
+	prevPipe io.ReadCloser
+	nextPipe io.WriteCloser
 
 	receiveCh chan Message
 	sendCh    chan Message
 
 	// pour synchroniser lecture du log de diffs
 	lastLine int
-	text     string           // vue locale du texte
+	text     string // vue locale du texte
 	lock     sync.Mutex
 }
 
@@ -102,8 +102,7 @@ func mergeClocks(local VectorClock, remote VectorClock) {
 // Interval in seconds between autosaves
 const autoSaveInterval = 1 * time.Second
 
-
-func main() {
+/*func main() {
 
 	id := flag.Int("n", 0, "id site")
 	inst := NewInstance(*id, os.Stdin, os.Stdout)
@@ -126,7 +125,7 @@ func main() {
 
 	// Load the saved text
 	//textArea.SetText(loadTextFromFile(saveFilePath))
-	text, err := difftools.GetUpdatedTextFromFile(0, "")
+	text, err := Utils.GetUpdatedTextFromFile(0, "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -138,7 +137,6 @@ func main() {
 	// Define the visible size of the scrollable area
 	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
-
 	// Goroutine de réception et application des horloges
 	go func() {
 		for msg := range inst.receiveCh {
@@ -146,17 +144,17 @@ func main() {
 			case MsgUpdate:
 				mergeClocks(inst.clock, msg.Clock)
 				// lire et appliquer nouvelles modifs
-				newText, err := difftools.GetUpdatedTextFromFile(inst.lastLine, inst.text)
-				if (err != nil){
+				newText, err := Utils.GetUpdatedTextFromFile(inst.lastLine, inst.text)
+				if err != nil {
 					log.Fatal(err)
 				}
 				inst.lock.Lock()
 				inst.text = newText
 				inst.lock.Unlock()
-                // mettre à jour l'UI dans le thread principal Fyne
-                textArea.SetText(newText)
-                textArea.Refresh()
-				inst.lastLine += difftools.LineCountSince(inst.lastLine)
+				// mettre à jour l'UI dans le thread principal Fyne
+				textArea.SetText(newText)
+				textArea.Refresh()
+				inst.lastLine += Utils.LineCountSince(inst.lastLine)
 			case MsgToken:
 				// gestion du token...
 			}
@@ -174,7 +172,7 @@ func main() {
 			case <-tk.C:
 				cur := textArea.Text
 				if cur != last {
-					difftools.SaveModifs(last, cur)
+					Utils.SaveModifs(last, cur)
 					// incrémenter l'horloge locale et envoyer seulement l'horloge
 					inst.clock[inst.id]++
 					inst.sendCh <- Message{Type: MsgUpdate, Clock: inst.clock}
@@ -183,7 +181,7 @@ func main() {
 			case <-stop:
 				cur := textArea.Text
 				if cur != last {
-					difftools.SaveModifs(last, cur)
+					Utils.SaveModifs(last, cur)
 					inst.clock[inst.id]++
 					inst.sendCh <- Message{Type: MsgUpdate, Clock: inst.clock}
 				}
@@ -209,4 +207,56 @@ func main() {
 
 	// Display the window
 	myWindow.ShowAndRun()
+}*/
+
+// main crée 3 sites, les relie et ouvre 3 fenêtres Fyne
+func main() {
+    total := 3
+    flag.Parse()
+
+    // Initialisation des sites
+    sites := make([]*Utils.Site, total)
+    for i := 0; i < total; i++ {
+        sites[i] = Utils.NewSite(i, total)
+    }
+
+    // Liaison en anneau
+    Utils.ConnectRing(sites)
+
+    // Démarrage de la communication pour chaque site
+    for _, s := range sites {
+        go s.StartCommunication()
+    }
+
+    // GUI Fyne
+    app := app.New()
+    for _, site := range sites {
+        s := site
+        win := app.NewWindow(fmt.Sprintf("SR05 Editor %d", s.ID))
+        win.Resize(fyne.NewSize(600, 400))
+
+        textArea := widget.NewMultiLineEntry()
+        textArea.Wrapping = fyne.TextWrapWord
+        textArea.SetText(string(s.Text))
+
+        scroll := container.NewScroll(textArea)
+        win.SetContent(scroll)
+
+        // Callback pour mise à jour UI
+        s.OnUpdate = func(fullText string) {
+            fyne.Do(func() {
+                textArea.SetText(fullText)
+                textArea.Refresh()
+            })
+        }
+
+        // Propagation immédiate à chaque modification
+        textArea.OnChanged = func(cur string) {
+            s.GenerateLocalOp(cur)
+            s.FlushToOut()
+        }
+
+        win.Show()
+    }
+    app.Run()
 }
