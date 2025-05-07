@@ -8,7 +8,7 @@ import (
 	"os"
 	"sync"
 	"time"
-
+	"flag"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
@@ -139,11 +139,8 @@ const autoSaveInterval = 1 * time.Second
 
 func main() {
 
-	if len(os.Args) < 2 {
-		log.Fatal("usage: program <id>")
-	}
-	id := os.Args[1]
-	inst := NewInstance(id, os.Stdin, os.Stdout)
+	id := flag.String("n", "0", "id site")
+	inst := NewInstance(*id, os.Stdin, os.Stdout)
 
 	// Create the app
 	myApp := app.New()
