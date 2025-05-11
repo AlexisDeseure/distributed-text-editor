@@ -1,14 +1,22 @@
 package controler
 
 import (
+	"fmt"
 	"strings"
+	"os"
+	"log"
 )
+
+var fieldsep = "/"
+var keyvalsep = "="
+var pid = os.Getpid()
+var stderr = log.New(os.Stderr, "", 0)
 
 func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val
 }
 
-func recaler(h, hrcv int) int {
+func resetClock(h, hrcv int) int {
 	if h < hrcv {
 		return hrcv + 1
 	}
@@ -39,4 +47,41 @@ func findval(msg string, key string) string {
 	}
 	display_w("No values found")
 	return ""
+}
+
+func CreateDefaultTab(n int) Tab {
+	arr := make(Tab, n)
+	for i := range arr {
+		arr[i] = TabElement{Type: MsgReleaseSc, Clock: 0}
+	}
+	return arr
+}
+
+func timestampComparison(a, b CompareElement) bool {
+	if a.Clock < b.Clock {
+		return true
+	} else if a.Clock == b.Clock && a.Id < b.Id{
+		return true
+	}
+	return false
+}
+
+func verifyScApproval(tab Tab) {
+	var sndmsg string
+	if tab[*id].Type == MsgRequestSc {
+
+		site_elem := CompareElement{Clock: tab[*id].Clock, Id: *id}
+
+		for i, el := range tab {
+			inter_elem := CompareElement{Clock: el.Clock, Id: i}
+			if i != *id && !timestampComparison(site_elem, inter_elem){
+				return
+			}
+		}
+
+		sndmsg = msg_format(TypeField, MsgAppStartSc)
+		fmt.Println(sndmsg)
+		display_d("Entering critical section")
+	}
+	
 }

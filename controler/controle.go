@@ -3,8 +3,6 @@ package controler
 import (
 	"flag"
 	"fmt"
-	"log"
-	"os"
 	"strconv"
 )
 
@@ -22,39 +20,27 @@ const (
 )
 
 const (
-	TypeField   string = "typ" // type of message
-	UptField    string = "upt" // content of update for application
-	HlgField    string = "hlg" // site clock value
-	SiteIdField string = "sid" // site id
+	TypeField       string = "typ" // type of message
+	UptField        string = "upt" // content of update for application
+	HlgField        string = "hlg" // site clock value
+	SiteIdField     string = "sid" // site id of sender
+	SiteIdDestField string = "did" // site id of destination
 )
 
+type CompareElement struct {
+	Clock int
+	Id    int
+}
 
 type TabElement struct {
 	Type string
 	Clock int
 }
 
-var fieldsep = "/"
-var keyvalsep = "="
+type Tab []TabElement
 
-var cyan string = "\033[1;36m"
-var raz string = "\033[0;00m"
-var rouge string = "\033[1;31m"
-var orange string = "\033[1;33m"
-
-var pid = os.Getpid()
-var stderr = log.New(os.Stderr, "", 0)
-
-var id *int = flag.Int("id", 1, "id")
+var id *int = flag.Int("id", 0, "id")
 var N *int = flag.Int("N", 1, "number of sites")
-
-func CreateDefaultTab(n int) []TabElement {
-	arr := make([]TabElement, n)
-	for i := range arr {
-		arr[i] = TabElement{Type: MsgReleaseSc, Clock: 0}
-	}
-	return arr
-}
 
 func main() {
 
@@ -64,6 +50,8 @@ func main() {
 	var rcvtyp string
 	var rcvmsg string
 	var hrcv int
+	var idrcv int
+	var destidrcv int
 	var h int = 0
 	
 	tab := CreateDefaultTab(*N)
@@ -75,16 +63,30 @@ func main() {
 			continue
 		}
 
-		s_hrcv := findval(rcvmsg, HlgField)
-		hrcv, _ = strconv.Atoi(s_hrcv)
 		// if there is no "hlg" in the message, hrcv is 0 so new h will be h+1
 		// if there is "hlg" in the message, h will be max(h, hrcv) + 1
-		h = recaler(h, hrcv)
+		s_hrcv := findval(rcvmsg, HlgField)
+		hrcv, _ = strconv.Atoi(s_hrcv)
+		
+		s_id := findval(rcvmsg, SiteIdField)
+		idrcv, _ = strconv.Atoi(s_id)
+
+		s_destid := findval(rcvmsg, SiteIdDestField)
+		destidrcv, _ = strconv.Atoi(s_destid)
+
+		// if the message is not for this site, ignore it
+		if s_destid == "" || destidrcv == *id {
+			// update the clock of the site
+			h = resetClock(h, hrcv)
+		}
+
 		sndmsg = ""
+
 		switch rcvtyp {
 		case MsgAppRequest:
 			tab[*id].Type = MsgRequestSc
 			tab[*id].Clock = h
+			display_d("Request message received from application")
 
 			sndmsg = msg_format(TypeField, MsgRequestSc) +
 				msg_format(HlgField, strconv.Itoa(h)) +
@@ -95,6 +97,7 @@ func main() {
 			tab[*id].Type = MsgReleaseSc
 			tab[*id].Clock = h
 			msg := findval(rcvmsg, UptField)
+			display_d("Release message received from application")
 
 			sndmsg = msg_format(TypeField, MsgReleaseSc) +
 				msg_format(HlgField, strconv.Itoa(h)) +
@@ -103,11 +106,59 @@ func main() {
 			display_d("Releasing critical section")
 
 		case MsgRequestSc:
-			continue
+			if idrcv != *id {
+				tab[idrcv].Type = MsgRequestSc
+				tab[idrcv].Clock = hrcv
+				display_d("Request message received")
+
+				// forward the message to the next site as id != idrcv
+				fmt.Println(rcvmsg)
+				display_d("Forwarding request message")
+				
+				// send receipt to the sender by the successor (ring topology)
+				sndmsg = msg_format(TypeField, MsgReceiptSc) +
+					msg_format(HlgField, strconv.Itoa(h)) +
+					msg_format(SiteIdField, strconv.Itoa(*id)) +
+					msg_format(SiteIdDestField, strconv.Itoa(idrcv))
+				display_d("Sending receipt")
+			    
+				verifyScApproval(tab)
+			}
+	
 		case MsgReleaseSc:
-			continue
+			if idrcv != *id {
+				tab[idrcv].Type = MsgReleaseSc
+				tab[idrcv].Clock = hrcv
+				display_d("Release message received")
+
+				// forward the message to the next site as id != idrcv
+				fmt.Println(rcvmsg)
+				display_d("Forwarding release message")
+
+				// send the updated message to the application
+				sndmsg = msg_format(TypeField, MsgAppUpdate) +
+					msg_format(HlgField, strconv.Itoa(h)) +
+					msg_format(UptField, findval(rcvmsg, UptField))
+					
+				verifyScApproval(tab)
+			}
+
 		case MsgReceiptSc:
-			continue
+			if idrcv != *id {
+				if destidrcv == *id {
+					if tab[idrcv].Type != MsgRequestSc {
+						tab[idrcv].Type = MsgReceiptSc
+						tab[idrcv].Clock = hrcv
+					}
+					display_d("Receipt received")
+
+					verifyScApproval(tab)
+				} else {
+					// forward the message to the next site as id != destidrcv and id != idrcv
+					sndmsg = rcvmsg
+					display_d("Forwarding receipt message")
+				}
+			}
 		
 		// unknown or not handled message type
 		// default:
