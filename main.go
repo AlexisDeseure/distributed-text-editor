@@ -102,7 +102,7 @@ func mergeClocks(local VectorClock, remote VectorClock) {
 // Interval in seconds between autosaves
 const autoSaveInterval = 1 * time.Second
 
-/*func main() {
+func main() {
 
 	id := flag.Int("n", 0, "id site")
 	inst := NewInstance(*id, os.Stdin, os.Stdout)
@@ -207,56 +207,56 @@ const autoSaveInterval = 1 * time.Second
 
 	// Display the window
 	myWindow.ShowAndRun()
-}*/
+}
 
 // main crée 3 sites, les relie et ouvre 3 fenêtres Fyne
-func main() {
-    total := 3
-    flag.Parse()
+// func main() {
+//     total := 3
+//     flag.Parse()
 
-    // Initialisation des sites
-    sites := make([]*Utils.Site, total)
-    for i := 0; i < total; i++ {
-        sites[i] = Utils.NewSite(i, total)
-    }
+//     // Initialisation des sites
+//     sites := make([]*Utils.Site, total)
+//     for i := 0; i < total; i++ {
+//         sites[i] = Utils.NewSite(i, total)
+//     }
 
-    // Liaison en anneau
-    Utils.ConnectRing(sites)
+//     // Liaison en anneau
+//     Utils.ConnectRing(sites)
 
-    // Démarrage de la communication pour chaque site
-    for _, s := range sites {
-        go s.StartCommunication()
-    }
+//     // Démarrage de la communication pour chaque site
+//     for _, s := range sites {
+//         go s.StartCommunication()
+//     }
 
-    // GUI Fyne
-    app := app.New()
-    for _, site := range sites {
-        s := site
-        win := app.NewWindow(fmt.Sprintf("SR05 Editor %d", s.ID))
-        win.Resize(fyne.NewSize(600, 400))
+//     // GUI Fyne
+//     app := app.New()
+//     for _, site := range sites {
+//         s := site
+//         win := app.NewWindow(fmt.Sprintf("SR05 Editor %d", s.ID))
+//         win.Resize(fyne.NewSize(600, 400))
 
-        textArea := widget.NewMultiLineEntry()
-        textArea.Wrapping = fyne.TextWrapWord
-        textArea.SetText(string(s.Text))
+//         textArea := widget.NewMultiLineEntry()
+//         textArea.Wrapping = fyne.TextWrapWord
+//         textArea.SetText(string(s.Text))
 
-        scroll := container.NewScroll(textArea)
-        win.SetContent(scroll)
+//         scroll := container.NewScroll(textArea)
+//         win.SetContent(scroll)
 
-        // Callback pour mise à jour UI
-        s.OnUpdate = func(fullText string) {
-            fyne.Do(func() {
-                textArea.SetText(fullText)
-                textArea.Refresh()
-            })
-        }
+//         // Callback pour mise à jour UI
+//         s.OnUpdate = func(fullText string) {
+//             fyne.Do(func() {
+//                 textArea.SetText(fullText)
+//                 textArea.Refresh()
+//             })
+//         }
 
-        // Propagation immédiate à chaque modification
-        textArea.OnChanged = func(cur string) {
-            s.GenerateLocalOp(cur)
-            s.FlushToOut()
-        }
+//         // Propagation immédiate à chaque modification
+//         textArea.OnChanged = func(cur string) {
+//             s.GenerateLocalOp(cur)
+//             s.FlushToOut()
+//         }
 
-        win.Show()
-    }
-    app.Run()
-}
+//         win.Show()
+//     }
+//     app.Run()
+// }
