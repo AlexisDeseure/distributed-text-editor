@@ -1,4 +1,4 @@
-package controler
+package main
 
 var cyan string = "\033[1;36m"
 var raz string = "\033[0;00m"
