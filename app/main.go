@@ -29,7 +29,7 @@ const (
 	UptField  string = "upt" // content of update for application
 )
 
-const outputDir string = "./output"
+const outputDir string = "../output"
 
 // Interval in seconds between autosaves
 const autoSaveInterval = 1 * time.Second
