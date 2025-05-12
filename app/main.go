@@ -11,6 +11,8 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"sync"
+	"strconv"
 )
 
 const (
@@ -34,6 +36,8 @@ const autoSaveInterval = 1 * time.Second
 
 var id *int = flag.Int("id", 0, "id of site")
 
+var mutex = &sync.Mutex{}
+
 func createLogFile() {
 	
 	// Create the output directory if it doesn't exist
@@ -50,81 +54,89 @@ func createLogFile() {
 	logFile.Close()
 }
 
+func send() {
+	var sndmsg string
+	var i int
+
+	i = 0
+
+	for {
+		mutex.Lock()
+		i = i + 1
+		sndmsg = "message_" + strconv.Itoa(i) + "\n"
+		fmt.Print(sndmsg)
+		mutex.Unlock()
+		time.Sleep(time.Duration(2) * time.Second)
+	}
+}
+
+func receive() {
+	var rcvmsg string
+	l := log.New(os.Stderr, "", 0)
+
+	for {
+		fmt.Scanln(&rcvmsg)
+		mutex.Lock()
+		l.Println("reception <", rcvmsg, ">")
+		for i := 1; i < 6; i++ {
+			l.Println("traitement message", i)
+			time.Sleep(time.Duration(1) * time.Second)
+		}
+		mutex.Unlock()
+		rcvmsg = ""
+	}
+}
 
 func main() {
 
 	// Parse command line arguments
 	flag.Parse()
-
 	createLogFile()
 
-	// Create the app
-	myApp := app.New()
+	// Initialize the UI and get window and text area
+	
+	myWindow, _ := initUI()
+	// myWindow, textArea := initUI()
 
-	// Create a window
-	myWindow := myApp.NewWindow("SR05 Editor")
-
-	// Set window size
-	myWindow.Resize(fyne.NewSize(800, 600))
-
-	// Define the text area
-	textArea := widget.NewMultiLineEntry()
-	textArea.SetPlaceHolder("Write something...")
-
-	// Set the wrapping so that the texts gets to the next line when it is wider than the text area
-	textArea.Wrapping = fyne.TextWrapWord
-
-	// Load the saved text
-	//textArea.SetText(loadTextFromFile(saveFilePath))
-	text, err := Utils.GetUpdatedTextFromFile(0, "")
-	if err != nil {
-		log.Fatal(err)
-	}
-	textArea.SetText(text)
-
-	// Define a scrollable area containing the text area
-	scrollable := container.NewScroll(textArea)
-
-	// Define the visible size of the scrollable area
-	scrollable.SetMinSize(fyne.NewSize(600, 400))
-
-	// // Goroutine de réception et application des horloges
-	// go func() {
-	// 	for msg := range inst.receiveCh {
-	// 		switch msg.Type {
-	// 		case MsgUpdate:
-	// 			// lire et appliquer nouvelles modifs
-	// 			newText, err := Utils.GetUpdatedTextFromFile(inst.lastLine, inst.text)
-	// 			if err != nil {
-	// 				log.Fatal(err)
-	// 			}
-	// 			inst.lock.Lock()
-	// 			inst.text = newText
-	// 			inst.lock.Unlock()
-	// 			// mettre à jour l'UI dans le thread principal Fyne
-	// 			textArea.SetText(newText)
-	// 			textArea.Refresh()
-	// 			inst.lastLine += Utils.LineCountSince(inst.lastLine)
-	// 		case MsgToken:
-	// 			// gestion du token...
-	// 		}
-	// 	}
-	// }()
-
-
-	// Set the window content
-	myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
-
-	// Cleanup à la fermeture
-	myWindow.SetCloseIntercept(func() {
-
-		// supprimer l'interception pour permettre la fermeture
-		myWindow.SetCloseIntercept(nil)
-
-		// enfin, fermer la fenêtre
-		myWindow.Close()
-	})
+	go send()
+	go receive()
 
 	// Display the window
 	myWindow.ShowAndRun()
+}
+
+func initUI() (fyne.Window, *widget.Entry) {
+    // Create app
+    myApp := app.New()
+
+    // Create a window
+    myWindow := myApp.NewWindow("SR05 Editor")
+    myWindow.Resize(fyne.NewSize(800, 600))
+
+    // Define the text area
+    textArea := widget.NewMultiLineEntry()
+    textArea.SetPlaceHolder("Write something...")
+    textArea.Wrapping = fyne.TextWrapWord
+
+    // Load the saved text
+    text, err := utils.GetUpdatedTextFromFile(0, "")
+    if err != nil {
+        log.Fatal(err)
+    }
+    textArea.SetText(text)
+
+    // Define a scrollable area containing the text area
+    scrollable := container.NewScroll(textArea)
+    scrollable.SetMinSize(fyne.NewSize(600, 400))
+
+    // Set the window content
+    myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
+
+    // Set the window close intercept
+    myWindow.SetCloseIntercept(func() {
+        myWindow.SetCloseIntercept(nil)
+        myWindow.Close()
+    })
+
+    return myWindow, textArea
 }
