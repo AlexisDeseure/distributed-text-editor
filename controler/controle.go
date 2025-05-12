@@ -58,20 +58,24 @@ func main() {
 
 	for {
 		fmt.Scanln(&rcvmsg)
-		rcvtyp = findval(rcvmsg, TypeField)
+		rcvtyp = findval(rcvmsg, TypeField, true)
 		if rcvtyp == "" {
 			continue
 		}
 
 		// if there is no "hlg" in the message, hrcv is 0 so new h will be h+1
 		// if there is "hlg" in the message, h will be max(h, hrcv) + 1
-		s_hrcv := findval(rcvmsg, HlgField)
+		s_hrcv := findval(rcvmsg, HlgField, false)
 		hrcv, _ = strconv.Atoi(s_hrcv)
 		
-		s_id := findval(rcvmsg, SiteIdField)
+		s_id := findval(rcvmsg, SiteIdField, false)
 		idrcv, _ = strconv.Atoi(s_id)
+		if idrcv > *N {
+			display_e("Invalid site id received")
+			continue
+		}
 
-		s_destid := findval(rcvmsg, SiteIdDestField)
+		s_destid := findval(rcvmsg, SiteIdDestField, false)
 		destidrcv, _ = strconv.Atoi(s_destid)
 
 		// if the message is not for this site, ignore it
@@ -96,7 +100,7 @@ func main() {
 		case MsgAppRelease:
 			tab[*id].Type = MsgReleaseSc
 			tab[*id].Clock = h
-			msg := findval(rcvmsg, UptField)
+			msg := findval(rcvmsg, UptField, true)
 			display_d("Release message received from application")
 
 			sndmsg = msg_format(TypeField, MsgReleaseSc) +
@@ -137,9 +141,9 @@ func main() {
 
 				// send the updated message to the application
 				sndmsg = msg_format(TypeField, MsgAppUpdate) +
-					msg_format(HlgField, strconv.Itoa(h)) +
-					msg_format(UptField, findval(rcvmsg, UptField))
-					
+					msg_format(UptField, findval(rcvmsg, UptField, true))
+				display_d("Sending update message to application")
+
 				verifyScApproval(tab)
 			}
 

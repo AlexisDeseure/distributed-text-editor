@@ -23,10 +23,12 @@ func resetClock(h, hrcv int) int {
 	return h + 1
 }
 
-func findval(msg string, key string) string {
+func findval(msg string, key string, verbose bool) string {
 
 	if len(msg) < 4 {
-		display_e("Message length too short")
+		if verbose {
+			display_e("Message length too short")
+		}
 		return ""
 	}
 
@@ -45,7 +47,10 @@ func findval(msg string, key string) string {
 			return tabkeyval[1]
 		}
 	}
-	display_w("No values found")
+	if verbose {
+		err_msg := fmt.Sprintf("Key %s not found in message", key)
+		display_w(err_msg)
+	}
 	return ""
 }
 
