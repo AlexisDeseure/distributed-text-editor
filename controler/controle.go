@@ -45,7 +45,14 @@ var N *int = flag.Int("N", 1, "number of sites")
 func main() {
 
 	flag.Parse()
-
+	if *id < 0 || *id >= *N {
+		display_e("Invalid site id")
+		return
+	}
+	if *N < 1 {
+		display_e("Invalid number of sites")
+		return
+	}
 	var sndmsg string
 	var rcvtyp string
 	var rcvmsg string

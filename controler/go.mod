@@ -1,3 +1,3 @@
-module contoler
+module controler
 
 go 1.24.2
