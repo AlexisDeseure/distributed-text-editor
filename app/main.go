@@ -38,54 +38,6 @@ var id *int = flag.Int("id", 0, "id of site")
 
 var mutex = &sync.Mutex{}
 
-func createLogFile() {
-	
-	// Create the output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-		log.Fatalf("Failed to create output directory: %v", err)
-	}
-
-	// Create the log file with the name "modifs_{id}.log"
-	logFilePath := fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
-	logFile, err := os.Create(logFilePath)
-	if err != nil {
-		log.Fatalf("Failed to create log file: %v", err)
-	}
-	logFile.Close()
-}
-
-func send() {
-	var sndmsg string
-	var i int
-
-	i = 0
-
-	for {
-		mutex.Lock()
-		i = i + 1
-		sndmsg = "message_" + strconv.Itoa(i) + "\n"
-		fmt.Print(sndmsg)
-		mutex.Unlock()
-		time.Sleep(time.Duration(2) * time.Second)
-	}
-}
-
-func receive() {
-	var rcvmsg string
-	l := log.New(os.Stderr, "", 0)
-
-	for {
-		fmt.Scanln(&rcvmsg)
-		mutex.Lock()
-		l.Println("reception <", rcvmsg, ">")
-		for i := 1; i < 6; i++ {
-			l.Println("traitement message", i)
-			time.Sleep(time.Duration(1) * time.Second)
-		}
-		mutex.Unlock()
-		rcvmsg = ""
-	}
-}
 
 func main() {
 
@@ -103,6 +55,58 @@ func main() {
 
 	// Display the window
 	myWindow.ShowAndRun()
+}
+
+
+func send() {
+	//TODO : Implement the send function with the message format to request the critical section, to send the release of critical section access and send update
+	var sndmsg string
+	var i int
+
+	i = 0
+
+	for {
+		mutex.Lock()
+		i = i + 1
+		sndmsg = "message_" + strconv.Itoa(i) + "\n"
+		fmt.Print(sndmsg)
+		mutex.Unlock()
+		time.Sleep(time.Duration(2) * time.Second)
+	}
+}
+
+func receive() {
+	//TODO : Implement the receive function with the message format to receive the critical section access and updates from remote received 
+	var rcvmsg string
+	l := log.New(os.Stderr, "", 0)
+
+	for {
+		fmt.Scanln(&rcvmsg)
+		mutex.Lock()
+		l.Println("reception <", rcvmsg, ">")
+		for i := 1; i < 6; i++ {
+			l.Println("traitement message", i)
+			time.Sleep(time.Duration(1) * time.Second)
+		}
+		mutex.Unlock()
+		rcvmsg = ""
+	}
+}
+
+func createLogFile() {
+	
+	// Create the output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		log.Fatalf("Failed to create output directory: %v", err)
+	}
+
+	// Create the log file with the name "modifs_{id}.log"
+	logFilePath := fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
+	logFile, err := os.Create(logFilePath)
+	if err != nil {
+		log.Fatalf("Failed to create log file: %v", err)
+	}
+	logFile.Close()
 }
 
 func initUI() (fyne.Window, *widget.Entry) {
@@ -140,3 +144,4 @@ func initUI() (fyne.Window, *widget.Entry) {
 
     return myWindow, textArea
 }
+
