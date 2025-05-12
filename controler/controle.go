@@ -39,7 +39,7 @@ type TabElement struct {
 
 type Tab []TabElement
 
-var id *int = flag.Int("id", 0, "id")
+var id *int = flag.Int("id", 0, "id of site")
 var N *int = flag.Int("N", 1, "number of sites")
 
 func main() {
