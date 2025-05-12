@@ -47,18 +47,17 @@ func main() {
 
 	// Initialize the UI and get window and text area
 	
-	myWindow, _ := initUI()
-	// myWindow, textArea := initUI()
+	myWindow, textArea := initUI()
 
-	go send()
-	go receive()
+	go send(textArea)
+	go receive(textArea)
 
 	// Display the window
 	myWindow.ShowAndRun()
 }
 
 
-func send() {
+func send(textArea *widget.Entry) {
 	//TODO : Implement the send function with the message format to request the critical section, to send the release of critical section access and send update
 	var sndmsg string
 	var i int
@@ -75,7 +74,7 @@ func send() {
 	}
 }
 
-func receive() {
+func receive(textArea *widget.Entry) {
 	//TODO : Implement the receive function with the message format to receive the critical section access and updates from remote received 
 	var rcvmsg string
 	l := log.New(os.Stderr, "", 0)
