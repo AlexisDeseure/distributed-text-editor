@@ -13,21 +13,19 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-type VectorClock map[int]int
-
-type MessageType string
-
 const (
-	MsgUpdate MessageType = "UPDATE"
-	MsgToken  MessageType = "TOKEN"
+	// message type to be sent to controler
+	MsgAppRequest string = "rqa" // request critical section
+	MsgAppRelease string = "rla" // release critical section
+	// message type to be receive from controler
+	MsgAppStartSc string = "ssa" // start critical section
+	MsgAppUpdate  string = "upa" // update critical section
 )
 
-// Message transporte uniquement l'horloge (et éventuellement un token)
-type Message struct {
-	Type   MessageType `json:"type"`
-	Clock  VectorClock `json:"clock"`
-	Holder string      `json:"holder,omitempty"` // utile pour MsgToken
-}
+const (
+	TypeField string = "typ" // type of message
+	UptField  string = "upt" // content of update for application
+)
 
 const outputDir string = "./output"
 
