@@ -1,8 +1,8 @@
-module sr05
+module app
 
 go 1.24.2
 
-require fyne.io/fyne/v2 v2.6.0
+require fyne.io/fyne/v2 v2.6.1
 
 require (
 	fyne.io/systray v1.11.0 // indirect
