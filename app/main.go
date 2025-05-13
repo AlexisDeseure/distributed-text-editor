@@ -38,15 +38,14 @@ var id *int = flag.Int("id", 0, "id of site")
 
 var mutex = &sync.Mutex{}
 
+var localSaveFilePath string = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
 
 func main() {
 
 	// Parse command line arguments
 	flag.Parse()
-	createLogFile()
 
 	// Initialize the UI and get window and text area
-	
 	myWindow, textArea := initUI()
 
 	go send(textArea)
@@ -92,22 +91,6 @@ func receive(textArea *widget.Entry) {
 	}
 }
 
-func createLogFile() {
-	
-	// Create the output directory if it doesn't exist
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-		log.Fatalf("Failed to create output directory: %v", err)
-	}
-
-	// Create the log file with the name "modifs_{id}.log"
-	logFilePath := fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
-	logFile, err := os.Create(logFilePath)
-	if err != nil {
-		log.Fatalf("Failed to create log file: %v", err)
-	}
-	logFile.Close()
-}
-
 func initUI() (fyne.Window, *widget.Entry) {
     // Create app
     myApp := app.New()
@@ -122,7 +105,7 @@ func initUI() (fyne.Window, *widget.Entry) {
     textArea.Wrapping = fyne.TextWrapWord
 
     // Load the saved text
-    text, err := utils.GetUpdatedTextFromFile(0, "")
+    text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
     if err != nil {
         log.Fatal(err)
     }

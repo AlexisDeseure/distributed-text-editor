@@ -8,8 +8,6 @@ import (
 	"os"
 )
 
-var saveFilePath string = "modifs.log"
-
 // A Diff object describes a modification that was applied to a text
 type Diff struct {
 	Pos       int    // Start index
@@ -183,9 +181,9 @@ func (d Diff) String() string {
 }
 
 // Get a list of diff objects based on two version of a text, and then save those diffs to the file
-func SaveModifs(oldText, newText string) error {
+func SaveModifs(oldText, newText string, saveFilePath string) error {
 	for _, d := range ComputeDiffs(oldText, newText) {
-		if err := appendDiffToFile(d); err != nil {
+		if err := appendDiffToFile(d, saveFilePath); err != nil {
 			return err
 		}
 	}
@@ -193,7 +191,7 @@ func SaveModifs(oldText, newText string) error {
 }
 
 // Convert a diff object to a string, and save it to the file
-func appendDiffToFile(d Diff) error {
+func appendDiffToFile(d Diff, saveFilePath string) error {
 	f, err := os.OpenFile(saveFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
@@ -207,8 +205,8 @@ func appendDiffToFile(d Diff) error {
 }
 
 // Read the save file starting from a given line, and get a list of diff objects
-func readDiffsFromFile(startLine int) ([]Diff, error) {
-	initialize()
+func readDiffsFromFile(startLine int, saveFilePath string) ([]Diff, error) {
+	initialize(saveFilePath)
 	f, err := os.Open(saveFilePath)
 	if err != nil {
 		return nil, err
@@ -235,8 +233,8 @@ func readDiffsFromFile(startLine int) ([]Diff, error) {
 	return diffs, nil
 }
 
-func GetUpdatedTextFromFile(startLine int, baseText string) (string, error) {
-	diffs, err := readDiffsFromFile(startLine)
+func GetUpdatedTextFromFile(startLine int, baseText string, saveFilePath string) (string, error) {
+	diffs, err := readDiffsFromFile(startLine, saveFilePath)
 	if err != nil {
 		return baseText, err
 	}
@@ -244,8 +242,8 @@ func GetUpdatedTextFromFile(startLine int, baseText string) (string, error) {
 }
 
 // Get the number of lines (diff objects) that were written after a given line
-func LineCountSince(startLine int) int {
-	initialize()
+func LineCountSince(startLine int, saveFilePath string) int {
+	initialize(saveFilePath)
 	f, err := os.Open(saveFilePath)
 	if err != nil {
 		// If the file cannot be opened, the method considers that there is no new line
@@ -264,7 +262,7 @@ func LineCountSince(startLine int) int {
 	return count
 }
 
-func initialize() {
+func initialize(saveFilePath string) {
 	// Make sure that the log file exists before using it
 	if _, err := os.Stat(saveFilePath); os.IsNotExist(err) {
 		// Create an empty file
