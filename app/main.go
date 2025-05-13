@@ -2,11 +2,10 @@ package main
 
 import (
 	"app/utils"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
-	"encoding/json"
 	"sync"
 	"time"
 
@@ -33,7 +32,7 @@ const (
 const outputDir string = "../output"
 
 // Interval in seconds between autosaves
-const autoSaveInterval = 1 * time.Second
+const autoSaveInterval = 3 * time.Second
 
 var id *int = flag.Int("id", 0, "id of site")
 
@@ -42,6 +41,7 @@ var mutex = &sync.Mutex{}
 var localSaveFilePath string = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
 
 var lastText string
+var sectionAccess bool = false
 
 func main() {
 
@@ -63,40 +63,57 @@ func main() {
 func send(textArea *widget.Entry) {
 	//TODO : Implement the send function with the message format to request the critical section, to send the release of critical section access and send update
 	var sndmsg string
-	last := textArea.Text
 	for {
+		mutex.Lock()
 		cur := textArea.Text
-		if cur != last {
-			mutex.Lock()
-			utils.SaveModifs(last, cur, localSaveFilePath)
-			diffs := utils.ComputeDiffs(last, cur)
+		if cur != lastText {
+			
+			utils.SaveModifs(lastText, cur, localSaveFilePath)
+			diffs := utils.ComputeDiffs(lastText, cur)
 			sndmsgBytes, err := json.Marshal(diffs)
 			if err != nil {
-				log.Printf("Error serializing diffs: %v", err)
+				display_e("Error serializing diffs")
 			} else {
 				sndmsg = string(sndmsgBytes)
 			}
 			fmt.Println(sndmsg)
-			mutex.Unlock()
-			time.Sleep(autoSaveInterval)
-			last = cur
+			lastText = cur
 		}
+		mutex.Unlock()
+		time.Sleep(autoSaveInterval)
 	}
 }
 
 func receive(textArea *widget.Entry) {
 	//TODO : Implement the receive function with the message format to receive the critical section access and updates from remote received
 	var rcvmsg string
-	l := log.New(os.Stderr, "", 0)
+	var rcvtyp string
+	var rcvuptdiffs []utils.Diff
 
 	for {
 		fmt.Scanln(&rcvmsg)
 		mutex.Lock()
-		var test []utils.Diff
-		if err := json.Unmarshal([]byte(rcvmsg), &test); err != nil {
-			log.Printf("Error deserializing diffs: %v", err)
-		} else {
-			l.Println("reception <", test, ">")
+		cur := textArea.Text
+		rcvtyp = findval(rcvmsg, TypeField, true)
+		if rcvtyp == "" {
+			continue
+		}
+
+		switch rcvtyp {
+		case MsgAppStartSc:
+			sectionAccess = true
+			
+		case MsgAppUpdate:
+			rcvupt := findval(rcvmsg, UptField, true)
+			err := json.Unmarshal([]byte(rcvupt), &rcvuptdiffs)
+			if err != nil {
+				display_e("Error serializing diffs")
+			}
+			oldTextUpdated := utils.ApplyDiffs(lastText, rcvuptdiffs)
+			newText := utils.ApplyDiffs(oldTextUpdated, utils.ComputeDiffs(oldTextUpdated, cur))
+			utils.SaveModifs(oldTextUpdated, newText, localSaveFilePath)
+			textArea.SetText(newText)
+			lastText = newText
 		}
 		mutex.Unlock()
 		rcvmsg = ""
@@ -129,7 +146,8 @@ func initUI() (fyne.Window, *widget.Entry) {
 	// Load the saved text
 	text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
 	if err != nil {
-		log.Fatal(err)
+		s_err := fmt.Sprintf("Error loading text from file: %v", err)
+		display_e(s_err)
 	}
 	textArea.SetText(text)
 
