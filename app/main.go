@@ -5,14 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"time"
 	"os"
+	"encoding/json"
+	"sync"
+	"time"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"sync"
-	"strconv"
 )
 
 const (
@@ -55,26 +56,32 @@ func main() {
 	myWindow.ShowAndRun()
 }
 
-
 func send(textArea *widget.Entry) {
 	//TODO : Implement the send function with the message format to request the critical section, to send the release of critical section access and send update
 	var sndmsg string
-	var i int
-
-	i = 0
-
+	last := textArea.Text
 	for {
-		mutex.Lock()
-		i = i + 1
-		sndmsg = "message_" + strconv.Itoa(i) + "\n"
-		fmt.Print(sndmsg)
-		mutex.Unlock()
-		time.Sleep(time.Duration(2) * time.Second)
+		cur := textArea.Text
+		if cur != last {
+			mutex.Lock()
+			utils.SaveModifs(last, cur, localSaveFilePath)
+			diffs := utils.ComputeDiffs(last, cur)
+			sndmsgBytes, err := json.Marshal(diffs)
+			if err != nil {
+				log.Printf("Error serializing diffs: %v", err)
+			} else {
+				sndmsg = string(sndmsgBytes)
+			}
+			fmt.Println(sndmsg)
+			mutex.Unlock()
+			time.Sleep(autoSaveInterval)
+			last = cur
+		}
 	}
 }
 
 func receive(textArea *widget.Entry) {
-	//TODO : Implement the receive function with the message format to receive the critical section access and updates from remote received 
+	//TODO : Implement the receive function with the message format to receive the critical section access and updates from remote received
 	var rcvmsg string
 	l := log.New(os.Stderr, "", 0)
 
@@ -82,48 +89,53 @@ func receive(textArea *widget.Entry) {
 		fmt.Scanln(&rcvmsg)
 		mutex.Lock()
 		l.Println("reception <", rcvmsg, ">")
-		for i := 1; i < 6; i++ {
-			l.Println("traitement message", i)
-			time.Sleep(time.Duration(1) * time.Second)
-		}
 		mutex.Unlock()
 		rcvmsg = ""
 	}
 }
 
-func initUI() (fyne.Window, *widget.Entry) {
-    // Create app
-    myApp := app.New()
+func saveTextToFile(path string, content string) error {
 
-    // Create a window
-    myWindow := myApp.NewWindow("SR05 Editor")
-    myWindow.Resize(fyne.NewSize(800, 600))
-
-    // Define the text area
-    textArea := widget.NewMultiLineEntry()
-    textArea.SetPlaceHolder("Write something...")
-    textArea.Wrapping = fyne.TextWrapWord
-
-    // Load the saved text
-    text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
-    if err != nil {
-        log.Fatal(err)
-    }
-    textArea.SetText(text)
-
-    // Define a scrollable area containing the text area
-    scrollable := container.NewScroll(textArea)
-    scrollable.SetMinSize(fyne.NewSize(600, 400))
-
-    // Set the window content
-    myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
-
-    // Set the window close intercept
-    myWindow.SetCloseIntercept(func() {
-        myWindow.SetCloseIntercept(nil)
-        myWindow.Close()
-    })
-
-    return myWindow, textArea
+	return os.WriteFile(path, []byte(content), 0644)
 }
 
+func processText(oldContent string, newContent string) {
+
+	utils.SaveModifs(oldContent, newContent, localSaveFilePath)
+}
+
+func initUI() (fyne.Window, *widget.Entry) {
+	// Create app
+	myApp := app.New()
+
+	// Create a window
+	myWindow := myApp.NewWindow("SR05 Editor")
+	myWindow.Resize(fyne.NewSize(800, 600))
+
+	// Define the text area
+	textArea := widget.NewMultiLineEntry()
+	textArea.SetPlaceHolder("Write something...")
+	textArea.Wrapping = fyne.TextWrapWord
+
+	// Load the saved text
+	text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	textArea.SetText(text)
+
+	// Define a scrollable area containing the text area
+	scrollable := container.NewScroll(textArea)
+	scrollable.SetMinSize(fyne.NewSize(600, 400))
+
+	// Set the window content
+	myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
+
+	// Set the window close intercept
+	myWindow.SetCloseIntercept(func() {
+		myWindow.SetCloseIntercept(nil)
+		myWindow.Close()
+	})
+
+	return myWindow, textArea
+}

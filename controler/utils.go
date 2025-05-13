@@ -3,14 +3,10 @@ package main
 import (
 	"fmt"
 	"strings"
-	"os"
-	"log"
 )
 
 var fieldsep = "/"
 var keyvalsep = "="
-var pid = os.Getpid()
-var stderr = log.New(os.Stderr, "", 0)
 
 func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val
@@ -65,7 +61,7 @@ func CreateDefaultTab(n int) Tab {
 func timestampComparison(a, b CompareElement) bool {
 	if a.Clock < b.Clock {
 		return true
-	} else if a.Clock == b.Clock && a.Id < b.Id{
+	} else if a.Clock == b.Clock && a.Id < b.Id {
 		return true
 	}
 	return false
@@ -79,7 +75,7 @@ func verifyScApproval(tab Tab) {
 
 		for i, el := range tab {
 			inter_elem := CompareElement{Clock: el.Clock, Id: i}
-			if i != *id && !timestampComparison(site_elem, inter_elem){
+			if i != *id && !timestampComparison(site_elem, inter_elem) {
 				return
 			}
 		}
@@ -88,5 +84,5 @@ func verifyScApproval(tab Tab) {
 		fmt.Println(sndmsg)
 		display_d("Entering critical section")
 	}
-	
+
 }

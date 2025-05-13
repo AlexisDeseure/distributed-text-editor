@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 )
 
 // A Diff object describes a modification that was applied to a text
@@ -265,6 +266,10 @@ func LineCountSince(startLine int, saveFilePath string) int {
 func initialize(saveFilePath string) {
 	// Make sure that the log file exists before using it
 	if _, err := os.Stat(saveFilePath); os.IsNotExist(err) {
+		// Create necessary directories if they don't exist
+		if err := os.MkdirAll(filepath.Dir(saveFilePath), os.ModePerm); err != nil {
+			log.Fatalf("Couldn't create directories for %s : %v", saveFilePath, err)
+		}
 		// Create an empty file
 		if f, err := os.Create(saveFilePath); err != nil {
 			log.Fatalf("Couldn't create %s : %v", saveFilePath, err)

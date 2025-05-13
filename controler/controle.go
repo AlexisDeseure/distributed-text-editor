@@ -8,15 +8,15 @@ import (
 
 const (
 	// message type to be sent/received to/from other sites
-	MsgRequestSc   string = "rqs" // request critical section
-	MsgReleaseSc   string = "rls" // release critical section
-	MsgReceiptSc   string = "rcs" // receipt of critical section
+	MsgRequestSc string = "rqs" // request critical section
+	MsgReleaseSc string = "rls" // release critical section
+	MsgReceiptSc string = "rcs" // receipt of critical section
 	// message type to be receive from application
-	MsgAppRequest  string = "rqa" // request critical section
-	MsgAppRelease  string = "rla" // release critical section
+	MsgAppRequest string = "rqa" // request critical section
+	MsgAppRelease string = "rla" // release critical section
 	// message type to be sent to application
-	MsgAppStartSc  string = "ssa" // start critical section
-	MsgAppUpdate   string = "upa" // update critical section
+	MsgAppStartSc string = "ssa" // start critical section
+	MsgAppUpdate  string = "upa" // update critical section
 )
 
 const (
@@ -33,7 +33,7 @@ type CompareElement struct {
 }
 
 type TabElement struct {
-	Type string
+	Type  string
 	Clock int
 }
 
@@ -60,7 +60,7 @@ func main() {
 	var idrcv int
 	var destidrcv int
 	var h int = 0
-	
+
 	tab := CreateDefaultTab(*N)
 
 	for {
@@ -74,7 +74,7 @@ func main() {
 		// if there is "hlg" in the message, h will be max(h, hrcv) + 1
 		s_hrcv := findval(rcvmsg, HlgField, false)
 		hrcv, _ = strconv.Atoi(s_hrcv)
-		
+
 		s_id := findval(rcvmsg, SiteIdField, false)
 		idrcv, _ = strconv.Atoi(s_id)
 		if idrcv > *N {
@@ -103,7 +103,7 @@ func main() {
 				msg_format(HlgField, strconv.Itoa(h)) +
 				msg_format(SiteIdField, strconv.Itoa(*id))
 			display_d("Requesting critical section")
-			
+
 		case MsgAppRelease:
 			tab[*id].Type = MsgReleaseSc
 			tab[*id].Clock = h
@@ -125,17 +125,17 @@ func main() {
 				// forward the message to the next site as id != idrcv
 				fmt.Println(rcvmsg)
 				display_d("Forwarding request message")
-				
+
 				// send receipt to the sender by the successor (ring topology)
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(HlgField, strconv.Itoa(h)) +
 					msg_format(SiteIdField, strconv.Itoa(*id)) +
 					msg_format(SiteIdDestField, strconv.Itoa(idrcv))
 				display_d("Sending receipt")
-			    
+
 				verifyScApproval(tab)
 			}
-	
+
 		case MsgReleaseSc:
 			if idrcv != *id {
 				tab[idrcv].Type = MsgReleaseSc
@@ -170,17 +170,17 @@ func main() {
 					display_d("Forwarding receipt message")
 				}
 			}
-		
-		// unknown or not handled message type
-		// default:
-		// 	display_e("Unknown or not handled message type")
-		// 	continue		
+
+			// unknown or not handled message type
+			// default:
+			// 	display_e("Unknown or not handled message type")
+			// 	continue
 		}
 
 		// send message to successor
 		if sndmsg != "" {
 			fmt.Println(sndmsg)
 		}
-		
+
 	}
 }
