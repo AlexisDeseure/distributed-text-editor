@@ -41,6 +41,8 @@ var mutex = &sync.Mutex{}
 
 var localSaveFilePath string = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
 
+var lastText string
+
 func main() {
 
 	// Parse command line arguments
@@ -48,6 +50,8 @@ func main() {
 
 	// Initialize the UI and get window and text area
 	myWindow, textArea := initUI()
+
+	lastText = textArea.Text
 
 	go send(textArea)
 	go receive(textArea)
@@ -88,7 +92,12 @@ func receive(textArea *widget.Entry) {
 	for {
 		fmt.Scanln(&rcvmsg)
 		mutex.Lock()
-		l.Println("reception <", rcvmsg, ">")
+		var test []utils.Diff
+		if err := json.Unmarshal([]byte(rcvmsg), &test); err != nil {
+			log.Printf("Error deserializing diffs: %v", err)
+		} else {
+			l.Println("reception <", test, ">")
+		}
 		mutex.Unlock()
 		rcvmsg = ""
 	}
