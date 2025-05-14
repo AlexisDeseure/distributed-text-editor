@@ -32,13 +32,13 @@ const (
 const outputDir string = "./output"
 
 // Interval in seconds between autosaves
-const autoSaveInterval = 3 * time.Second
+const autoSaveInterval = 200 * time.Millisecond
 
 var id *int = flag.Int("id", 0, "id of site")
 
 var mutex = &sync.Mutex{}
 
-var localSaveFilePath string = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
+var localSaveFilePath string
 
 var lastText string
 var sectionAccess bool = false
@@ -48,7 +48,13 @@ func main() {
 
 	// Parse command line arguments
 	flag.Parse()
+	if *id < 0{
+		display_e("Invalid site id")
+		return
+	}
 
+	localSaveFilePath = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
+	
 	// Initialize the UI and get window and text area
 	myWindow, textArea := initUI()
 
