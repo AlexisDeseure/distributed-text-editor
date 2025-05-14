@@ -42,6 +42,7 @@ var localSaveFilePath string = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
 
 var lastText string
 var sectionAccess bool = false
+var sectionAccessRequested bool = false
 
 func main() {
 
@@ -61,23 +62,37 @@ func main() {
 }
 
 func send(textArea *widget.Entry) {
-	//TODO : Implement the send function with the message format to request the critical section, to send the release of critical section access and send update
 	var sndmsg string
 	for {
+		sndmsg = ""
 		mutex.Lock()
 		cur := textArea.Text
-		if cur != lastText {
-			
-			utils.SaveModifs(lastText, cur, localSaveFilePath)
-			diffs := utils.ComputeDiffs(lastText, cur)
-			sndmsgBytes, err := json.Marshal(diffs)
+
+		// Check if the controller has granted access to the critical section
+		if sectionAccess {
+			newTextDiffs := utils.ComputeDiffs(lastText, cur)
+			newText := utils.ApplyDiffs(lastText, newTextDiffs)
+			utils.SaveModifs(lastText, newText, localSaveFilePath)
+			lastText = newText
+
+			sndmsgBytes, err := json.Marshal(newTextDiffs)
 			if err != nil {
 				display_e("Error serializing diffs")
-			} else {
-				sndmsg = string(sndmsgBytes)
+				continue
 			}
+			sndmsg = msg_format(TypeField, MsgAppRelease) +
+				msg_format(UptField, string(sndmsgBytes))
+			sectionAccess = false
+			display_d("Critical section released")
+		
+		// Request access to the critical section if the text has changed
+		} else if (cur != lastText) && (!sectionAccessRequested) {
+			sectionAccessRequested = true
+			sndmsg = msg_format(TypeField, MsgAppRequest)
+		}
+
+		if sndmsg != "" {
 			fmt.Println(sndmsg)
-			lastText = cur
 		}
 		mutex.Unlock()
 		time.Sleep(autoSaveInterval)
@@ -85,7 +100,6 @@ func send(textArea *widget.Entry) {
 }
 
 func receive(textArea *widget.Entry) {
-	//TODO : Implement the receive function with the message format to receive the critical section access and updates from remote received
 	var rcvmsg string
 	var rcvtyp string
 	var rcvuptdiffs []utils.Diff
@@ -100,20 +114,30 @@ func receive(textArea *widget.Entry) {
 		}
 
 		switch rcvtyp {
-		case MsgAppStartSc:
+		case MsgAppStartSc: // Receive start critical section message
 			sectionAccess = true
+			sectionAccessRequested = false
+			display_d("Critical section access granted")
 			
-		case MsgAppUpdate:
+		case MsgAppUpdate: // Receive update from remote version
 			rcvupt := findval(rcvmsg, UptField, true)
 			err := json.Unmarshal([]byte(rcvupt), &rcvuptdiffs)
 			if err != nil {
-				display_e("Error serializing diffs")
+				display_e("Error deserializing diffs")
+				continue
 			}
-			oldTextUpdated := utils.ApplyDiffs(lastText, rcvuptdiffs)
-			newText := utils.ApplyDiffs(oldTextUpdated, utils.ComputeDiffs(oldTextUpdated, cur))
-			utils.SaveModifs(oldTextUpdated, newText, localSaveFilePath)
-			textArea.SetText(newText)
-			lastText = newText
+
+			oldTextUpdated := utils.ApplyDiffs(lastText, rcvuptdiffs) // Apply the diffs to the last remote text
+			utils.SaveModifs(lastText, oldTextUpdated, localSaveFilePath)
+			lastText = oldTextUpdated
+			newText := utils.ApplyDiffs(cur, utils.ComputeDiffs(cur, lastText)) // Apply the diffs to the current text
+
+			fyne.Do(func() {
+				textArea.SetText(newText)
+				textArea.Refresh()
+			})
+
+			display_d("Critical section updated")
 		}
 		mutex.Unlock()
 		rcvmsg = ""
