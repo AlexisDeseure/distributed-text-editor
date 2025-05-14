@@ -33,6 +33,7 @@ const outputDir string = "./output"
 
 // Interval in seconds between autosaves
 const autoSaveInterval = 200 * time.Millisecond
+// const autoSaveInterval = 2 * time.Second
 
 var id *int = flag.Int("id", 0, "id of site")
 
