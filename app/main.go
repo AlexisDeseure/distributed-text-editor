@@ -29,7 +29,7 @@ const (
 	UptField  string = "upt" // content of update for application
 )
 
-const outputDir string = "./output"
+var outputDir *string = flag.String("o", "./output", "output directory")
 
 // Interval in seconds between autosaves
 const autoSaveInterval = 200 * time.Millisecond
@@ -54,8 +54,8 @@ func main() {
 		return
 	}
 
-	localSaveFilePath = fmt.Sprintf("%s/modifs_%d.log", outputDir, *id)
-	
+	localSaveFilePath = fmt.Sprintf("%s/modifs_%d.log", *outputDir, *id)
+
 	// Initialize the UI and get window and text area
 	myWindow, textArea := initUI()
 
