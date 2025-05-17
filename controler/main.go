@@ -4,6 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"bufio"
+    "os"
+    "strings"
 )
 
 const (
@@ -62,9 +65,15 @@ func main() {
 	var h int = 0
 
 	tab := CreateDefaultTab(*N)
-
+	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Scanln(&rcvmsg)
+		rcvmsgRaw, err := reader.ReadString('\n')
+        if err != nil {
+			display_e("Error reading message : "+err.Error())
+            continue
+        }
+        rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
+
 		rcvtyp = findval(rcvmsg, TypeField, true)
 		if rcvtyp == "" {
 			continue
