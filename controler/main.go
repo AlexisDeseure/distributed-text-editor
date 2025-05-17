@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strconv"
 	"bufio"
-    "os"
-    "strings"
+  "os"
+  "strings"
+	"math"
+	"encoding/json"
 )
 
 const (
@@ -14,6 +16,7 @@ const (
 	MsgRequestSc string = "rqs" // request critical section
 	MsgReleaseSc string = "rls" // release critical section
 	MsgReceiptSc string = "rcs" // receipt of critical section
+	MsgCut       string = "cut" // save the vectorial clock value
 	// message type to be receive from application
 	MsgAppRequest string = "rqa" // request critical section
 	MsgAppRelease string = "rla" // release critical section
@@ -28,6 +31,8 @@ const (
 	HlgField        string = "hlg" // site clock value
 	SiteIdField     string = "sid" // site id of sender
 	SiteIdDestField string = "did" // site id of destination
+	VectorialClockField string = "vcl" // vectorial clock value
+	ActionNumberField string = "act" // number of the site's current action 
 )
 
 type CompareElement struct {
@@ -59,10 +64,13 @@ func main() {
 	var sndmsg string
 	var rcvtyp string
 	var rcvmsg string
+	var vcrcv []int = make([]int, *N) // vectorial clock received
 	var hrcv int
 	var idrcv int
 	var destidrcv int
 	var h int = 0
+	var vectorialClock []int = make([]int, *N) // vectorial clock initialized to 0
+	var currentAction int = 0
 
 	tab := CreateDefaultTab(*N)
 	reader := bufio.NewReader(os.Stdin)
@@ -83,7 +91,8 @@ func main() {
 		// if there is "hlg" in the message, h will be max(h, hrcv) + 1
 		s_hrcv := findval(rcvmsg, HlgField, false)
 		hrcv, _ = strconv.Atoi(s_hrcv)
-
+		tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
+		json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
 		s_id := findval(rcvmsg, SiteIdField, false)
 		idrcv, _ = strconv.Atoi(s_id)
 		if idrcv > *N {
@@ -98,6 +107,11 @@ func main() {
 		if s_destid == "" || destidrcv == *id {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
+			currentAction++
+			for i := 0; i < *N; i++ {
+				vectorialClock[i] = int(math.Max(float64(vectorialClock[i]), float64(vcrcv[i])))
+			}
+			vectorialClock[*id]++
 		}
 
 		sndmsg = ""
@@ -108,9 +122,14 @@ func main() {
 			tab[*id].Clock = h
 			display_d("Request message received from application")
 
+			jsonVc, err := json.Marshal(vectorialClock)
+			if err != nil {
+    		display_e("JSON encoding error: " + err.Error())
+			}
 			sndmsg = msg_format(TypeField, MsgRequestSc) +
 				msg_format(HlgField, strconv.Itoa(h)) +
-				msg_format(SiteIdField, strconv.Itoa(*id))
+				msg_format(SiteIdField, strconv.Itoa(*id)) +
+				msg_format(VectorialClockField, string(jsonVc))
 			display_d("Requesting critical section")
 
 		case MsgAppRelease:
@@ -119,10 +138,16 @@ func main() {
 			msg := findval(rcvmsg, UptField, true)
 			display_d("Release message received from application")
 
+			jsonVc, err := json.Marshal(vectorialClock)
+			if err != nil {
+    		display_e("JSON encoding error: " + err.Error())
+			}
+
 			sndmsg = msg_format(TypeField, MsgReleaseSc) +
 				msg_format(HlgField, strconv.Itoa(h)) +
 				msg_format(UptField, msg) +
-				msg_format(SiteIdField, strconv.Itoa(*id))
+				msg_format(SiteIdField, strconv.Itoa(*id)) +
+				msg_format(VectorialClockField, string(jsonVc))
 			display_d("Releasing critical section")
 
 		case MsgRequestSc:
@@ -135,11 +160,17 @@ func main() {
 				fmt.Println(rcvmsg)
 				display_d("Forwarding request message")
 
+				jsonVc, err := json.Marshal(vectorialClock)
+				if err != nil {
+    			display_e("JSON encoding error: " + err.Error())
+				}
+
 				// send receipt to the sender by the successor (ring topology)
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(HlgField, strconv.Itoa(h)) +
 					msg_format(SiteIdField, strconv.Itoa(*id)) +
-					msg_format(SiteIdDestField, strconv.Itoa(idrcv))
+					msg_format(SiteIdDestField, strconv.Itoa(idrcv)) + 
+					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Sending receipt")
 
 				verifyScApproval(tab)
@@ -188,6 +219,7 @@ func main() {
 
 		// send message to successor
 		if sndmsg != "" {
+			currentAction++	
 			fmt.Println(sndmsg)
 		}
 
