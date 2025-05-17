@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 	"time"
+	"bufio"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -111,8 +113,15 @@ func receive(textArea *widget.Entry) {
 	var rcvtyp string
 	var rcvuptdiffs []utils.Diff
 
+	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Scanln(&rcvmsg)
+		rcvmsgRaw, err := reader.ReadString('\n')
+        if err != nil {
+            display_e("Error reading message : "+err.Error())
+            continue
+        }
+		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
+		
 		mutex.Lock()
 		cur := textArea.Text
 		rcvtyp = findval(rcvmsg, TypeField, true)
