@@ -28,11 +28,13 @@ L'architecture de l'application est divisée en plusieurs couches :
 
 Schéma de l'architecture :
 
-![Schéma de l'architecture](doc/schema_anneau.png)
+
 
 ### Couche applicative
-
+![Schéma de la logique de l'application](doc/schema_application.png)
 
 ### Couche de contrôle
 
 ### Couche d'initialisation
+
+![Schéma de l'architecture](doc/schema_anneau.png)
