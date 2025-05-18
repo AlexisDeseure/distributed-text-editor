@@ -22,6 +22,13 @@ const (
 	// message type to be sent to application
 	MsgAppStartSc string = "ssa" // start critical section
 	MsgAppUpdate  string = "upa" // update critical section
+	MsgInitialSize string = "siz" // number of lines in the log file
+	MsgInitialText string = "txt" // Initial text when the app begins
+	MsgAcknowledgement string = "ack" // tell controller n°0 that one controller is ready to compare its log size
+	MsgCompareSize string = "cmp" // number of lines and id  so that it can be compared with other sizes
+	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
+	MsgPropagateText string = "prp" // send the associated text to the next controller
+	MsgReturnNewText string = "ret" // return the new common text content to the site 
 )
 
 const (
@@ -49,6 +56,12 @@ type Tab []TabElement
 var id *int = flag.Int("id", 0, "id of site")
 var N *int = flag.Int("N", 1, "number of sites")
 var h int = 0
+
+var size int = 0
+var text string = ""
+var best bool = false
+
+var initializedSites int = 0
 
 func main() {
 
@@ -108,13 +121,17 @@ func main() {
 		s_destid := findval(rcvmsg, SiteIdDestField, false)
 		destidrcv, _ = strconv.Atoi(s_destid)
 
+		ignored := false
+
 		// if the message is not for this site, ignore it
 		if s_destid == "" || destidrcv == *id {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
 			currentAction++
 
-			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate {
+			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate && 
+			rcvtyp != MsgInitialSize && rcvtyp != MsgAcknowledgement && rcvtyp != MsgCompareSize && rcvtyp != MsgRequestPropagation &&
+			rcvtyp != MsgInitialText {
 				// update the vectorial clock if the message is not from the application
 				var err error
 				// get the vectorial clock from the message
@@ -131,6 +148,16 @@ func main() {
 					display_e("JSON encoding error: " + err.Error())
 				}
 			}
+		} else {
+			display_w("forwarding: " + rcvtyp + " to " + s_destid)
+			ignored = true
+		}
+
+		// The message is forwarded to the next controler
+		if ignored {
+			currentAction++	
+			fmt.Println(sndmsg)
+			continue
 		}
 
 		sndmsg = ""
@@ -214,6 +241,74 @@ func main() {
 					sndmsg = rcvmsg
 					display_d("Forwarding receipt message")
 				}
+			}
+		
+		case MsgInitialSize:
+
+			msg := findval(rcvmsg, UptField, true)
+			size, err = strconv.Atoi(msg)
+			if err != nil {
+				display_e("Error while converting string to int")
+			}
+
+		case MsgInitialText:
+
+			text = findval(rcvmsg, UptField, true)
+			// All controllers that are not controller n°0 should inform controller n°0 that they are ready
+			if *id != 0 {
+				//sndmsg = msg_format(TypeField, MsgAcknowledgement) + msg_format(SiteIdDestField, strconv.Itoa(0))
+			}
+
+
+		case MsgAcknowledgement:
+
+			// This message can only be sent to controler n°0.
+			// This controler will then know when every other controler is ready to communicate 
+			initializedSites++
+
+			// If every other site is initialized we can start comparing sizes
+			if initializedSites >= *N - 1 {
+				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size) + "|" + strconv.Itoa(*id))
+			}
+			
+		case MsgCompareSize:
+
+			msg := findval(rcvmsg, UptField, true)
+			parts := strings.SplitN(msg, "|", 2)
+
+			rcvsize, err := strconv.Atoi(parts[0])
+			if err != nil {
+				display_e("Error while converting string to int")
+			}
+
+			if *id != 0 {
+				if rcvsize > size {
+					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, msg)
+				} else {
+					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size) + "|" + strconv.Itoa(*id))
+				}
+			} else {
+				bestid, err := strconv.Atoi(parts[1])
+				if err != nil {
+					display_e("Error while converting string to int")
+				}
+				sndmsg = msg_format(TypeField, MsgRequestPropagation) + msg_format(SiteIdDestField, strconv.Itoa(bestid))
+				display_d("Best id: " + strconv.Itoa(bestid))
+			}
+
+		case MsgRequestPropagation:
+
+			best = true
+			sndmsg = msg_format(TypeField, MsgPropagateText) + msg_format(UptField, text)
+
+		case MsgPropagateText:
+
+			if !best {
+				text = findval(rcvmsg, UptField, false)
+				sndmsg = msg_format(TypeField, MsgReturnNewText) + msg_format(UptField, text)
+				fmt.Println(sndmsg)
+				//currentAction++	// ????????? Est-ce qu'on doit incrémenter une 2e fois du coup ?
+				sndmsg = msg_format(TypeField, MsgPropagateText) + msg_format(UptField, text)
 			}
 
 			// unknown or not handled message type

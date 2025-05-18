@@ -24,7 +24,7 @@ func findval(msg string, key string, verbose bool) string {
 
 	if len(msg) < 4 {
 		if verbose {
-			display_e("Message length too short")
+			display_e("Message length too short: " + msg)
 		}
 		return ""
 	}

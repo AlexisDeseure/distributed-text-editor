@@ -10,6 +10,7 @@ import (
 	"time"
 	"bufio"
 	"strings"
+	"strconv"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -24,6 +25,9 @@ const (
 	// message type to be receive from controler
 	MsgAppStartSc string = "ssa" // start critical section
 	MsgAppUpdate  string = "upa" // update critical section
+	MsgInitialSize string = "siz" // number of lines in the log file
+	MsgInitialText string = "txt" // Initial text when the app begins
+	MsgReturnNewText string = "ret" // return the new common text content to the site 
 )
 
 const (
@@ -67,11 +71,28 @@ func main() {
 
 	lastText = textArea.Text
 
+	sendInitial(utils.LineCountSince(0, localSaveFilePath))
+
 	go send(textArea)
 	go receive(textArea)
 
 	// Display the window
 	myWindow.ShowAndRun()
+}
+
+func sendInitial(size int) {
+		//if *id != 0 {return}
+		sndmsg := msg_format(TypeField, MsgInitialSize) +
+				msg_format(UptField, strconv.Itoa(size))
+		fmt.Println(sndmsg)
+
+		content, err := os.ReadFile(localSaveFilePath)
+		if err != nil {
+			fmt.Println("Error while reading log file:", err)
+			return
+		}
+		sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(content))
+		fmt.Println(sndmsg)
 }
 
 func send(textArea *widget.Entry) {
@@ -143,6 +164,7 @@ func receive(textArea *widget.Entry) {
 		}
 
 		switch rcvtyp {
+
 		case MsgAppStartSc: // Receive start critical section message
 			sectionAccess = true
 			display_d("Critical section access granted")
@@ -166,6 +188,15 @@ func receive(textArea *widget.Entry) {
 			})
 
 			display_d("Critical section updated")
+
+		case MsgReturnNewText:
+
+			/*text := findval(rcvmsg, UptField, false)
+			err := os.WriteFile(localSaveFilePath, []byte(text), 0644)
+			if err != nil {
+				display_e("Error while writing into log file: " + err.Error())
+			}*/
+
 		}
 		mutex.Unlock()
 		rcvmsg = ""
