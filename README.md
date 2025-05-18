@@ -12,12 +12,17 @@ Ce projet a pour but de créer une application distribuée permettant de traiter
 
 ## Exécution
 
-Pour exécuter le projet il faut avoir installé une version de Go supérieure à 1.18. Ensuite, il suffit d'exécuter le script `run.sh` en spécifiant le nombre d'instances souhaité et s'il est nécessaire de réinitialiser les anciennes sauvegardes des instances de l'application :
+Pour exécuter le projet il faut avoir installé une version de Go supérieure à 1.18. Ensuite, il suffit d'exécuter le script `run.sh` :
+```bash
+./run.sh
+```
+
+Pour exécuter le projet avec des paramètres spécifiques, il faut exécuter le script `run.sh` avec les arguments suivants :
 
 ```bash
-./run.sh <nombre_d_instances> <reinitialiser_anciennes_sauvegardes>
+./run.sh <nombre_d_instances> <reinitialiser_anciennes_sauvegardes> <debug_mode>
 ```
- avec `<nombre_d_instances>` le nombre d'instances de l'application à exécuter et `<reinitialiser_anciennes_sauvegardes>` devant prendre la valeur `1` si l'on souhaite réinitialiser les anciennes sauvegardes (n'importe quel autre valeur ou rien sinon).
+ avec `<nombre_d_instances>` le nombre d'instances de l'application à exécuter, `<reinitialiser_anciennes_sauvegardes>` devant prendre la valeur `1` si l'on souhaite réinitialiser les anciennes sauvegardes (n'importe quel autre valeur ou rien sinon) et `<debug_mode>` devant prendre la valeur `1` si l'on souhaite activer le mode débogage : sauvegarde manuelle avec un bouton (n'importe quel autre valeur ou rien sinon).
 
 ## Architecture
 

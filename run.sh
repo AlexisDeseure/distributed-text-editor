@@ -32,11 +32,29 @@ else
     read -p "How many instances do you want to run? " N
 fi
 
-if [ "$2" -eq 1 ]; then
-    echo "Folder deletion..."
-    rm -rf "$OUTPUTS_DIR"
+if [ -n "$2" ]; then
+    output_deletion="$2"
+else 
+    read -p "Do you want to delete the outputs folder? (1 for yes): " output_deletion
 fi
 
+if [ -n "$3" ]; then
+    DEBUG_MODE="$3"
+else 
+    read -p "Do you want to run in debug mode (save button)? (1 for yes): " DEBUG_MODE
+fi
+
+if [ "$DEBUG_MODE" -eq 1 ]; then
+    DEBUG_MODE="true"
+else
+    DEBUG_MODE="false"
+fi
+
+if [ "$output_deletion" -eq 1 ]; then
+    echo "Deleting outputs folder..."
+    rm -rf "$OUTPUTS_DIR"
+    echo "Folder deletion complete."
+fi
 # validate input (integer >= 2)
 if ! [[ "$N" =~ ^[0-9]+$ ]] || [ "$N" -lt 2 ]; then
     echo "Error: Please enter a valid integer greater than or equal to 2."
@@ -59,7 +77,7 @@ done
 # start all apps and controllers
 for (( i=0; i< N; i++ )); do
     # launch application with its ID
-    "$PWD/build/app" -id "$i" -o "$OUTPUTS_DIR" < "$FIFO_DIR/in_A$i" > "$FIFO_DIR/out_A$i" &
+    "$PWD/build/app" -id "$i" -o "$OUTPUTS_DIR" -debug="$DEBUG_MODE" < "$FIFO_DIR/in_A$i" > "$FIFO_DIR/out_A$i" &
     # launch controller with its ID and total N
     "$PWD/build/controler" -id "$i" -N "$N" < "$FIFO_DIR/in_C$i" > "$FIFO_DIR/out_C$i" &
 done

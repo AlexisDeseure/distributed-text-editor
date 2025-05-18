@@ -39,6 +39,9 @@ const autoSaveInterval = 200 * time.Millisecond
 
 var id *int = flag.Int("id", 0, "id of site")
 
+var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
+var saveTrigger = make(chan struct{})
+
 var mutex = &sync.Mutex{}
 
 var localSaveFilePath string
@@ -46,6 +49,7 @@ var localSaveFilePath string
 var lastText string
 var sectionAccess bool = false
 var sectionAccessRequested bool = false
+
 
 func main() {
 
@@ -73,6 +77,15 @@ func main() {
 func send(textArea *widget.Entry) {
 	var sndmsg string
 	for {
+
+		if *debug && !sectionAccessRequested {
+			// Wait for the manual save trigger
+			<-saveTrigger
+		} else {
+			// Wait for the autosave interval
+			time.Sleep(autoSaveInterval)
+		}
+
 		sndmsg = ""
 		mutex.Lock()
 		cur := textArea.Text
@@ -92,6 +105,7 @@ func send(textArea *widget.Entry) {
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
 			sectionAccess = false
+			sectionAccessRequested = false
 			display_d("Critical section released")
 		
 		// Request access to the critical section if the text has changed
@@ -104,7 +118,6 @@ func send(textArea *widget.Entry) {
 			fmt.Println(sndmsg)
 		}
 		mutex.Unlock()
-		time.Sleep(autoSaveInterval)
 	}
 }
 
@@ -132,7 +145,6 @@ func receive(textArea *widget.Entry) {
 		switch rcvtyp {
 		case MsgAppStartSc: // Receive start critical section message
 			sectionAccess = true
-			sectionAccessRequested = false
 			display_d("Critical section access granted")
 			
 		case MsgAppUpdate: // Receive update from remote version
@@ -171,6 +183,8 @@ func processText(oldContent string, newContent string) {
 }
 
 func initUI() (fyne.Window, *widget.Entry) {
+	var content fyne.CanvasObject
+
 	// Create app
 	myApp := app.New()
 
@@ -196,7 +210,17 @@ func initUI() (fyne.Window, *widget.Entry) {
 	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
 	// Set the window content
-	myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
+	if *debug {
+		saveBtn := widget.NewButton("Save", func() {
+			// Déclenche la sauvegarde via le channel
+			go func() { saveTrigger <- struct{}{} }()
+		})
+		content = container.NewBorder(nil, saveBtn, nil, nil, scrollable)
+	} else {
+		content = container.NewBorder(nil, nil, nil, nil, scrollable)
+	}
+
+	myWindow.SetContent(content)
 
 	// Set the window close intercept
 	myWindow.SetCloseIntercept(func() {
