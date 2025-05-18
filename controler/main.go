@@ -85,7 +85,7 @@ func main() {
 
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
-			//display_e("Error reading message : " + err.Error())
+			display_e("Error reading message : " + err.Error())
 			continue
 		}
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
@@ -123,7 +123,7 @@ func main() {
 				tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
 				err = json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
 				if err != nil {
-					//display_e(rcvmsg + " : Error unmarshalling vectorial clock: " + err.Error())
+					display_e(rcvmsg + " : Error unmarshalling vectorial clock: " + err.Error())
 				}
 
 				// update the vectorial clock

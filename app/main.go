@@ -132,7 +132,7 @@ func receive(textArea *widget.Entry, myWindow fyne.Window) {
 	for {
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
-			//display_e("Error reading message : " + err.Error())
+			display_e("Error reading message : " + err.Error())
 			continue
 		}
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
