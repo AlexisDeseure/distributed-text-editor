@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"math"
 )
 
 var fieldsep = "/"
@@ -12,11 +13,11 @@ func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val
 }
 
-func resetClock(h, hrcv int) int {
-	if h < hrcv {
+func resetClock(hlg, hrcv int) int {
+	if hlg < hrcv {
 		return hrcv + 1
 	}
-	return h + 1
+	return hlg + 1
 }
 
 func findval(msg string, key string, verbose bool) string {
@@ -48,6 +49,14 @@ func findval(msg string, key string, verbose bool) string {
 		display_w(err_msg)
 	}
 	return ""
+}
+
+func updateVectorialClock(oldVectorialClock []int, newVectorialClock []int) []int {
+	for i := range oldVectorialClock {
+		oldVectorialClock[i] = int(math.Max(float64(oldVectorialClock[i]), float64(newVectorialClock[i])))
+	}
+	oldVectorialClock[*id]++
+	return oldVectorialClock
 }
 
 func CreateDefaultTab(n int) Tab {

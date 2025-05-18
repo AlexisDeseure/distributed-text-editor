@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"bufio"
-  "os"
-  "strings"
-	"math"
+	"os"
+	"strings"
 	"encoding/json"
 )
 
@@ -49,6 +48,7 @@ type Tab []TabElement
 
 var id *int = flag.Int("id", 0, "id of site")
 var N *int = flag.Int("N", 1, "number of sites")
+var h int = 0
 
 func main() {
 
@@ -68,13 +68,19 @@ func main() {
 	var hrcv int
 	var idrcv int
 	var destidrcv int
-	var h int = 0
 	var vectorialClock []int = make([]int, *N) // vectorial clock initialized to 0
 	var currentAction int = 0
 
 	tab := CreateDefaultTab(*N)
 	reader := bufio.NewReader(os.Stdin)
 	for {
+		// transform the vectorial clock into a json at the beginning of the loop
+		// to avoid nill/undefined jsonVc value
+		jsonVc, err := json.Marshal(vectorialClock)
+		if err != nil {
+			display_e("JSON encoding error: " + err.Error())
+		}
+
 		rcvmsgRaw, err := reader.ReadString('\n')
         if err != nil {
 			display_e("Error reading message : "+err.Error())
@@ -91,8 +97,7 @@ func main() {
 		// if there is "hlg" in the message, h will be max(h, hrcv) + 1
 		s_hrcv := findval(rcvmsg, HlgField, false)
 		hrcv, _ = strconv.Atoi(s_hrcv)
-		tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
-		json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
+
 		s_id := findval(rcvmsg, SiteIdField, false)
 		idrcv, _ = strconv.Atoi(s_id)
 		if idrcv > *N {
@@ -108,10 +113,24 @@ func main() {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
 			currentAction++
-			for i := 0; i < *N; i++ {
-				vectorialClock[i] = int(math.Max(float64(vectorialClock[i]), float64(vcrcv[i])))
+
+			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate {
+				// update the vectorial clock if the message is not from the application
+				var err error
+				// get the vectorial clock from the message
+				tmp_vcrc := findval(rcvmsg, VectorialClockField, false) 
+				err = json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
+				if err != nil {
+					display_e(rcvmsg+ " : Error unmarshalling vectorial clock: " + err.Error())
+				}
+
+				// update the vectorial clock
+				vectorialClock = updateVectorialClock(vectorialClock, vcrcv)
+				jsonVc, err = json.Marshal(vectorialClock)
+				if err != nil {
+					display_e("JSON encoding error: " + err.Error())
+				}
 			}
-			vectorialClock[*id]++
 		}
 
 		sndmsg = ""
@@ -122,10 +141,6 @@ func main() {
 			tab[*id].Clock = h
 			display_d("Request message received from application")
 
-			jsonVc, err := json.Marshal(vectorialClock)
-			if err != nil {
-    		display_e("JSON encoding error: " + err.Error())
-			}
 			sndmsg = msg_format(TypeField, MsgRequestSc) +
 				msg_format(HlgField, strconv.Itoa(h)) +
 				msg_format(SiteIdField, strconv.Itoa(*id)) +
@@ -137,11 +152,6 @@ func main() {
 			tab[*id].Clock = h
 			msg := findval(rcvmsg, UptField, true)
 			display_d("Release message received from application")
-
-			jsonVc, err := json.Marshal(vectorialClock)
-			if err != nil {
-    		display_e("JSON encoding error: " + err.Error())
-			}
 
 			sndmsg = msg_format(TypeField, MsgReleaseSc) +
 				msg_format(HlgField, strconv.Itoa(h)) +
@@ -159,11 +169,6 @@ func main() {
 				// forward the message to the next site as id != idrcv
 				fmt.Println(rcvmsg)
 				display_d("Forwarding request message")
-
-				jsonVc, err := json.Marshal(vectorialClock)
-				if err != nil {
-    			display_e("JSON encoding error: " + err.Error())
-				}
 
 				// send receipt to the sender by the successor (ring topology)
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +

@@ -175,7 +175,7 @@ func initUI() (fyne.Window, *widget.Entry) {
 	myApp := app.New()
 
 	// Create a window
-	myWindow := myApp.NewWindow("SR05 Editor")
+	myWindow := myApp.NewWindow("Distributed Editor n"+fmt.Sprint(*id))
 	myWindow.Resize(fyne.NewSize(800, 600))
 
 	// Define the text area
