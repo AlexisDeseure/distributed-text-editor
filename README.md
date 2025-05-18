@@ -38,3 +38,4 @@ Schéma de l'architecture :
 ### Couche d'initialisation
 
 ![Schéma de l'architecture](doc/schema_anneau.png)
+
