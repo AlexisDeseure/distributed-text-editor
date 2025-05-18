@@ -1,37 +1,39 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"strconv"
-	"bufio"
 	"os"
+	"strconv"
 	"strings"
-	"encoding/json"
 )
 
 const (
 	// message type to be sent/received to/from other sites
-	MsgRequestSc string = "rqs" // request critical section
-	MsgReleaseSc string = "rls" // release critical section
-	MsgReceiptSc string = "rcs" // receipt of critical section
-	MsgCut       string = "cut" // save the vectorial clock value
+	MsgRequestSc   string = "rqs" // request critical section
+	MsgReleaseSc   string = "rls" // release critical section
+	MsgReceiptSc   string = "rcs" // receipt of critical section
+	MsgCut         string = "cut" // save the vectorial clock value
+	MsgAppShallDie string = "shd" // app shall die
 	// message type to be receive from application
 	MsgAppRequest string = "rqa" // request critical section
 	MsgAppRelease string = "rla" // release critical section
+	MsgAppDied    string = "apd" // app died
 	// message type to be sent to application
 	MsgAppStartSc string = "ssa" // start critical section
 	MsgAppUpdate  string = "upa" // update critical section
 )
 
 const (
-	TypeField       string = "typ" // type of message
-	UptField        string = "upt" // content of update for application
-	HlgField        string = "hlg" // site clock value
-	SiteIdField     string = "sid" // site id of sender
-	SiteIdDestField string = "did" // site id of destination
+	TypeField           string = "typ" // type of message
+	UptField            string = "upt" // content of update for application
+	HlgField            string = "hlg" // site clock value
+	SiteIdField         string = "sid" // site id of sender
+	SiteIdDestField     string = "did" // site id of destination
 	VectorialClockField string = "vcl" // vectorial clock value
-	ActionNumberField string = "act" // number of the site's current action 
+	ActionNumberField   string = "act" // number of the site's current action
 )
 
 type CompareElement struct {
@@ -82,11 +84,11 @@ func main() {
 		}
 
 		rcvmsgRaw, err := reader.ReadString('\n')
-        if err != nil {
-			display_e("Error reading message : "+err.Error())
-            continue
-        }
-        rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
+		if err != nil {
+			//display_e("Error reading message : " + err.Error())
+			continue
+		}
+		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
 
 		rcvtyp = findval(rcvmsg, TypeField, true)
 		if rcvtyp == "" {
@@ -118,10 +120,10 @@ func main() {
 				// update the vectorial clock if the message is not from the application
 				var err error
 				// get the vectorial clock from the message
-				tmp_vcrc := findval(rcvmsg, VectorialClockField, false) 
+				tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
 				err = json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
 				if err != nil {
-					display_e(rcvmsg+ " : Error unmarshalling vectorial clock: " + err.Error())
+					//display_e(rcvmsg + " : Error unmarshalling vectorial clock: " + err.Error())
 				}
 
 				// update the vectorial clock
@@ -174,7 +176,7 @@ func main() {
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(HlgField, strconv.Itoa(h)) +
 					msg_format(SiteIdField, strconv.Itoa(*id)) +
-					msg_format(SiteIdDestField, strconv.Itoa(idrcv)) + 
+					msg_format(SiteIdDestField, strconv.Itoa(idrcv)) +
 					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Sending receipt")
 
@@ -216,6 +218,17 @@ func main() {
 				}
 			}
 
+		case MsgAppDied:
+			sndmsg = msg_format(TypeField, MsgAppShallDie)
+			fmt.Println(sndmsg)
+
+		case MsgAppShallDie:
+			sndmsg = msg_format(TypeField, MsgAppShallDie)
+			fmt.Println(sndmsg)
+			display_w("Controller died")
+			os.Stdout.Sync()
+			return
+
 			// unknown or not handled message type
 			// default:
 			// 	display_e("Unknown or not handled message type")
@@ -224,7 +237,7 @@ func main() {
 
 		// send message to successor
 		if sndmsg != "" {
-			currentAction++	
+			currentAction++
 			fmt.Println(sndmsg)
 		}
 
