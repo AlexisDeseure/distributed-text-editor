@@ -27,8 +27,6 @@ const (
 	MsgAppStartSc  string = "ssa" // start critical section
 	MsgAppUpdate   string = "upa" // update critical section
 	MsgAppShallDie string = "shd" // app shall die
-	MsgAppStartSc  string = "ssa" // start critical section
-	MsgAppUpdate   string = "upa" // update critical section
 	MsgInitialSize string = "siz" // number of lines in the log file
 	MsgInitialText string = "txt" // Initial text when the app begins
 	MsgReturnNewText string = "ret" // return the new common text content to the site 
@@ -105,6 +103,15 @@ func sendInitial(size int) {
 func send(textArea *widget.Entry) {
 	var sndmsg string
 	for {
+
+		if *debug && !sectionAccessRequested {
+			// Wait for the manual save trigger
+			<-saveTrigger
+		} else {
+			// Wait for the autosave interval
+			time.Sleep(autoSaveInterval)
+		}
+
 		sndmsg = ""
 		mutex.Lock()
 		cur := textArea.Text
@@ -124,6 +131,7 @@ func send(textArea *widget.Entry) {
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
 			sectionAccess = false
+			sectionAccessRequested = false
 			display_d("Critical section released")
 
 			// Request access to the critical section if the text has changed
@@ -193,11 +201,7 @@ func receive(textArea *widget.Entry, myWindow fyne.Window) {
 			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
 				fyne.CurrentApp().Driver().Quit()
 			}, true)
-		}
-		mutex.Unlock()
-		rcvmsg = ""
-	}
-}
+		
 
 		case MsgReturnNewText:
 
