@@ -12,24 +12,24 @@ import (
 
 const (
 	// message type to be sent/received to/from other sites
-	MsgRequestSc   string = "rqs" // request critical section
-	MsgReleaseSc   string = "rls" // release critical section
-	MsgReceiptSc   string = "rcs" // receipt of critical section
-	MsgCut         string = "cut" // save the vectorial clock value
-	MsgAppShallDie string = "shd" // app shall die
-	// message type to be receive from application
-	MsgAppRequest string = "rqa" // request critical section
-	MsgAppRelease string = "rla" // release critical section
-	MsgAppDied    string = "apd" // app died
-	// message type to be sent to application
-	MsgAppStartSc         string = "ssa" // start critical section
-	MsgAppUpdate          string = "upa" // update critical section
-	MsgInitialSize        string = "siz" // number of lines in the log file
-	MsgInitialText        string = "txt" // Initial text when the app begins
+	MsgRequestSc          string = "rqs" // request critical section
+	MsgReleaseSc          string = "rls" // release critical section
+	MsgReceiptSc          string = "rcs" // receipt of critical section
+	MsgCut                string = "cut" // save the vectorial clock value
+	MsgAppShallDie        string = "shd" // app shall die
 	MsgAcknowledgement    string = "ack" // tell controller n°0 that one controller is ready to compare its log size
 	MsgCompareSize        string = "cmp" // number of lines and id  so that it can be compared with other sizes
 	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
 	MsgPropagateText      string = "prp" // send the associated text to the next controller
+	// message type to be receive from application
+	MsgAppRequest         string = "rqa" // request critical section
+	MsgAppRelease         string = "rla" // release critical section
+	MsgAppDied            string = "apd" // app died
+	MsgInitialSize        string = "siz" // number of lines in the log file
+	MsgInitialText        string = "txt" // Initial text when the app begins
+	// message type to be sent to application
+	MsgAppStartSc         string = "ssa" // start critical section
+	MsgAppUpdate          string = "upa" // update critical section
 	MsgReturnNewText      string = "ret" // return the new common text content to the site
 )
 
@@ -347,8 +347,7 @@ func main() {
 		case MsgCut:
 			if nbvls < *N {
 				display_d("cut message received from application")
-				var siteActionNumber string
-				siteActionNumber = fmt.Sprintf("site_%d_action_%d", *id, currentAction)
+				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction)
 
 				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
 				nbvls++

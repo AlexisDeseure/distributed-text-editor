@@ -24,12 +24,12 @@ const (
 	MsgAppRelease string = "rla" // release critical section
 	MsgAppDied    string = "apd" // app died
 	MsgCut        string = "cut" // save the vectorial clock value
+	MsgInitialSize   string = "siz" // number of lines in the log file
+	MsgInitialText   string = "txt" // Initial text when the app begins
 	// message type to be receive from controler
 	MsgAppStartSc    string = "ssa" // start critical section
 	MsgAppUpdate     string = "upa" // update critical section
 	MsgAppShallDie   string = "shd" // app shall die
-	MsgInitialSize   string = "siz" // number of lines in the log file
-	MsgInitialText   string = "txt" // Initial text when the app begins
 	MsgReturnNewText string = "ret" // return the new common text content to the site
 )
 
