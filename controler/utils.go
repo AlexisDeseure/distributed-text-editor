@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
+	"io"
 	"math"
+	"os"
+	"strings"
 )
 
 var fieldsep = "/"
@@ -94,4 +97,59 @@ func verifyScApproval(tab Tab) {
 		display_d("Entering critical section")
 	}
 
+}
+
+func saveCutJson(cutNumber string, vectorialClock []int, siteActionNumber string, filePath string) error {
+	display_d(cutNumber)
+	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("error opening/creating file: %w", err)
+	}
+	defer fichier.Close()
+
+	contenu, err := io.ReadAll(fichier)
+	if err != nil {
+		return fmt.Errorf("error reading file: %w", err)
+	}
+
+	var data map[string]interface{}
+	if len(contenu) == 0 {
+		data = make(map[string]interface{})
+	} else {
+		err = json.Unmarshal(contenu, &data)
+		if err != nil {
+			return fmt.Errorf("error while parsing JSON: %w", err)
+		}
+	}
+
+	// json structur : {cutNumber: {siteActionNumber: vectorialClock}}
+	innerMap, ok := data[cutNumber].(map[string]interface{})
+	if !ok {
+		innerMap = make(map[string]interface{})
+		data[cutNumber] = innerMap
+	}
+
+	innerMap[siteActionNumber] = vectorialClock
+
+	_, err = fichier.Seek(0, 0)
+	if err != nil {
+		return fmt.Errorf("error seeking file start: %w", err)
+	}
+
+	err = fichier.Truncate(0)
+	if err != nil {
+		return fmt.Errorf("error truncating file: %w", err)
+	}
+
+	modifiedContent, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshalling JSON: %w", err)
+	}
+
+	_, err = fichier.Write(modifiedContent)
+	if err != nil {
+		return fmt.Errorf("error writing to file: %w", err)
+	}
+
+	return nil
 }

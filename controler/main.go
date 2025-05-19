@@ -22,25 +22,26 @@ const (
 	MsgAppRelease string = "rla" // release critical section
 	MsgAppDied    string = "apd" // app died
 	// message type to be sent to application
-	MsgAppStartSc string = "ssa" // start critical section
-	MsgAppUpdate  string = "upa" // update critical section
-	MsgInitialSize string = "siz" // number of lines in the log file
-	MsgInitialText string = "txt" // Initial text when the app begins
-	MsgAcknowledgement string = "ack" // tell controller n°0 that one controller is ready to compare its log size
-	MsgCompareSize string = "cmp" // number of lines and id  so that it can be compared with other sizes
+	MsgAppStartSc         string = "ssa" // start critical section
+	MsgAppUpdate          string = "upa" // update critical section
+	MsgInitialSize        string = "siz" // number of lines in the log file
+	MsgInitialText        string = "txt" // Initial text when the app begins
+	MsgAcknowledgement    string = "ack" // tell controller n°0 that one controller is ready to compare its log size
+	MsgCompareSize        string = "cmp" // number of lines and id  so that it can be compared with other sizes
 	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
-	MsgPropagateText string = "prp" // send the associated text to the next controller
-	MsgReturnNewText string = "ret" // return the new common text content to the site 
+	MsgPropagateText      string = "prp" // send the associated text to the next controller
+	MsgReturnNewText      string = "ret" // return the new common text content to the site
 )
 
 const (
-	TypeField           string = "typ" // type of message
-	UptField            string = "upt" // content of update for application
-	HlgField            string = "hlg" // site clock value
-	SiteIdField         string = "sid" // site id of sender
-	SiteIdDestField     string = "did" // site id of destination
-	VectorialClockField string = "vcl" // vectorial clock value
-	ActionNumberField   string = "act" // number of the site's current action
+	TypeField               string = "typ"   // type of message
+	UptField                string = "upt"   // content of update for application
+	HlgField                string = "hlg"   // site clock value
+	SiteIdField             string = "sid"   // site id of sender
+	SiteIdDestField         string = "did"   // site id of destination
+	VectorialClockField     string = "vcl"   // vectorial clock value
+	cutNumber               string = "cnb"   // number of next cut
+	NumberVirtualClockSaved string = "nbvls" // number of virtual clock saved
 )
 
 type CompareElement struct {
@@ -64,6 +65,9 @@ var text string = ""
 var best bool = false
 
 var initializedSites int = 0
+
+var outputDir *string = flag.String("o", "./output", "output directory")
+var localCutFilePath = fmt.Sprintf("%s/cut.json", *outputDir)
 
 func main() {
 
@@ -123,17 +127,23 @@ func main() {
 		s_destid := findval(rcvmsg, SiteIdDestField, false)
 		destidrcv, _ = strconv.Atoi(s_destid)
 
+		nbcut := findval(rcvmsg, cutNumber, false)
+
+		nbvls, _ := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
+		display_d(findval(rcvmsg, NumberVirtualClockSaved, false))
+
 		ignored := false
 
 		// if the message is not for this site, ignore it
-		if rcvtyp != MsgReceiptSc || destidrcv == *id {
+		if s_destid == "" || destidrcv == *id {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
 			currentAction++
 
-			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate && 
-			rcvtyp != MsgInitialSize && rcvtyp != MsgAcknowledgement && rcvtyp != MsgCompareSize && rcvtyp != MsgRequestPropagation &&
-			rcvtyp != MsgInitialText && rcvtyp != MsgPropagateText && rcvtyp != MsgReturnNewText {
+			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate &&
+				rcvtyp != MsgInitialSize && rcvtyp != MsgAcknowledgement && rcvtyp != MsgCompareSize && rcvtyp != MsgRequestPropagation &&
+				rcvtyp != MsgInitialText && rcvtyp != MsgPropagateText && rcvtyp != MsgReturnNewText && rcvtyp != MsgAppDied &&
+				rcvtyp != MsgAppShallDie && rcvtyp != MsgCut {
 				// update the vectorial clock if the message is not from the application
 				var err error
 				// get the vectorial clock from the message
@@ -159,7 +169,7 @@ func main() {
 		// Variable 'ignored' can be used later to determine if a message should be ignored or not
 		// Some messages need to use forwarded messages and some need to really ignore them
 		if ignored {
-			currentAction++	// ?????
+			currentAction++ // ?????
 			fmt.Println(rcvmsg)
 		}
 
@@ -245,7 +255,7 @@ func main() {
 					display_d("Forwarding receipt message")
 				}
 			}
-		
+
 		case MsgInitialSize:
 
 			msg := findval(rcvmsg, UptField, true)
@@ -263,7 +273,6 @@ func main() {
 				sndmsg = msg_format(TypeField, MsgAcknowledgement) + msg_format(SiteIdDestField, strconv.Itoa(0))
 			}
 
-
 		case MsgAcknowledgement:
 
 			if ignored {
@@ -271,15 +280,15 @@ func main() {
 			}
 
 			// This message can only be sent to controler n°0.
-			// This controler will then know when every other controler is ready to communicate 
+			// This controler will then know when every other controler is ready to communicate
 			initializedSites++
 
 			// If every other site is initialized we can start comparing sizes
-			if initializedSites >= *N - 1 {
+			if initializedSites >= *N-1 {
 				display_w("done")
-				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size) + "|" + strconv.Itoa(*id))
+				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size)+"|"+strconv.Itoa(*id))
 			}
-			
+
 		case MsgCompareSize:
 
 			msg := findval(rcvmsg, UptField, true)
@@ -294,7 +303,7 @@ func main() {
 				if rcvsize > size {
 					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, msg)
 				} else {
-					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size) + "|" + strconv.Itoa(*id))
+					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size)+"|"+strconv.Itoa(*id))
 				}
 			} else {
 				bestid, err := strconv.Atoi(parts[1])
@@ -334,6 +343,24 @@ func main() {
 			display_w("Controller died")
 			os.Stdout.Sync()
 			return
+
+		case MsgCut:
+			if nbvls < *N {
+				display_d("cut message received from application")
+				var siteActionNumber string
+				siteActionNumber = fmt.Sprintf("site_%d_action_%d", *id, currentAction)
+
+				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
+				nbvls++
+
+				sndmsg = msg_format(TypeField, MsgCut) +
+					msg_format(cutNumber, nbcut) +
+					msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls))
+			} else {
+				sndmsg = ""
+				continue
+			}
+			display_d("Cut saved to file")
 
 			// unknown or not handled message type
 			// default:
