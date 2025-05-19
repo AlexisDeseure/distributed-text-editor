@@ -22,7 +22,7 @@ const (
 	// message type to be sent to controler
 	MsgAppRequest string = "rqa" // request critical section
 	MsgAppRelease string = "rla" // release critical section
-	MsgAppDied    string = "apd" // app died
+	MsgCut       string = "cut" // save the vectorial clock value
 	// message type to be receive from controler
 	MsgAppStartSc  string = "ssa" // start critical section
 	MsgAppUpdate   string = "upa" // update critical section
@@ -35,6 +35,8 @@ const (
 const (
 	TypeField string = "typ" // type of message
 	UptField  string = "upt" // content of update for application
+	cutNumber string = "cnb" // number of next cut
+	NumberVirtualClockSaved string = "nbvcl" // number of virtual clock saved
 )
 
 var outputDir *string = flag.String("o", "./output", "output directory")
@@ -48,10 +50,12 @@ var id *int = flag.Int("id", 0, "id of site")
 
 var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
 var saveTrigger = make(chan struct{})
+var cutTrigger = make(chan struct{})
 
 var mutex = &sync.Mutex{}
 
 var localSaveFilePath string
+var localCutFilePath string
 
 var lastText string
 var sectionAccess bool = false
@@ -102,22 +106,34 @@ func sendInitial(size int) {
 
 func send(textArea *widget.Entry) {
 	var sndmsg string
+	var cut bool = false
 	for {
+		select {
+		case <-cutTrigger:
+			cut = true
 
-		if *debug && !sectionAccessRequested {
-			// Wait for the manual save trigger
-			<-saveTrigger
-		} else {
-			// Wait for the autosave interval
+		case <-saveTrigger:
+			if *debug && !sectionAccessRequested {
+				// Wait for the manual save trigger
+			}
+
+		default:
 			time.Sleep(autoSaveInterval)
 		}
 
-		sndmsg = ""
+		sndmsg = ""	
 		mutex.Lock()
 		cur := textArea.Text
 
-		// Check if the controller has granted access to the critical section
-		if sectionAccess {
+		if cut {
+			var localCutFilePath = fmt.Sprintf("%s/cut.json", *outputDir)
+			cut = false
+			nextCutNumber, _ := GetNextCutNumber(localCutFilePath)
+			sndmsg = msg_format(TypeField, MsgCut) +
+				msg_format(cutNumber, nextCutNumber) +
+				msg_format(NumberVirtualClockSaved, strconv.Itoa(0))
+		}else if sectionAccess {
+			// Check if the controller has granted access to the critical section
 			newTextDiffs := utils.ComputeDiffs(lastText, cur)
 			newText := utils.ApplyDiffs(lastText, newTextDiffs)
 			utils.SaveModifs(lastText, newText, localSaveFilePath)
@@ -256,16 +272,23 @@ func initUI() (fyne.Window, *widget.Entry) {
 	scrollable := container.NewScroll(textArea)
 	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
+	// button to create a cut and save vectorial clock
+	cutBtn := widget.NewButton("Cut", func() {
+		// triggers the saving of vector clocks
+		go func() { cutTrigger <- struct{}{} }()
+	})
+
 	// Set the window content
 	if *debug {
-        saveBtn := widget.NewButton("Save", func() {
-		// Déclenche la sauvegarde via le channel
-		go func() { saveTrigger <- struct{}{} }()
-	})
-		content = container.NewBorder(nil, saveBtn, nil, nil, scrollable)
+		saveBtn := widget.NewButton("Save", func() {
+			// Déclenche la sauvegarde via le channel
+			go func() { saveTrigger <- struct{}{} }()
+		})
+		bottomButtons := container.NewHBox(saveBtn, cutBtn)
+		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
 	} else {
-		content = container.NewBorder(nil, nil, nil, nil, scrollable)
-		
+		bottomButtons := container.NewHBox(cutBtn)
+		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
 	}
 
 	myWindow.SetContent(content)
