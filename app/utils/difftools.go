@@ -149,30 +149,44 @@ func ApplyDiffsSequential(base string, diffs []Diff) string {
 
 // This method applies one or multiple Diffs to a base text, and returns the resulting text
 // Diffs are applied from last to first so that the indices stay valid after each Diff is applied
+
 func ApplyDiffs(base string, diffs []Diff) string {
+    // Convert the base text to a slice of runes
+    rBase := []rune(base)
 
-	// Convert the base text to a slice of runes
-	rBase := []rune(base)
+    // Iterate backwards through the slice
+    for i := len(diffs) - 1; i >= 0; i-- {
+        d := diffs[i]
 
-	// Iterate backwards through the slice
-	for i := len(diffs) - 1; i >= 0; i-- {
+        // If d.Pos is beyond the current text, pad with spaces
+        if d.Pos > len(rBase) {
+            pad := make([]rune, d.Pos-len(rBase))
+            for j := range pad {
+                pad[j] = ' '
+            }
+            rBase = append(rBase, pad...)
+        }
 
-		// Get the Diff
-		d := diffs[i]
+        // Compute safe start and end for deletion
+        start := d.Pos
+        end := d.Pos + d.NbDeleted
+        if start < 0 {
+            start = 0
+        }
+        if end > len(rBase) {
+            end = len(rBase)
+        }
 
-		// Get the parts of the text that are before and after the modified block
-		before := rBase[:d.Pos]
-		after := rBase[d.Pos+d.NbDeleted:]
+        // Split before/after the deletion window
+        before := rBase[:start]
+        after := rBase[end:]
 
-		// Convert the text to insert into a slice of runes
-		ins := []rune(d.NewText)
+        // Insert the new text
+        ins := []rune(d.NewText)
+        rBase = append(before, append(ins, after...)...)
+    }
 
-		// Insert this text between the two other parts
-		rBase = append(before, append(ins, after...)...)
-	}
-
-	// Return the new text
-	return string(rBase)
+    return string(rBase)
 }
 
 // Convert a diff object to a json string

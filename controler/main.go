@@ -41,7 +41,7 @@ const (
 	SiteIdDestField         string = "did"   // site id of destination
 	VectorialClockField     string = "vcl"   // vectorial clock value
 	cutNumber               string = "cnb"   // number of next cut
-	NumberVirtualClockSaved string = "nbvls" // number of virtual clock saved
+	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 )
 
 type CompareElement struct {
@@ -165,7 +165,6 @@ func main() {
 		// Variable 'ignored' can be used later to determine if a message should be ignored or not
 		// Some messages need to use forwarded messages and some need to really ignore them
 		if ignored {
-			currentAction++ // ?????
 			fmt.Println(rcvmsg)
 		}
 
@@ -343,7 +342,12 @@ func main() {
 				display_e("Error : "+err.Error())
 			}
 			if nbvls < *N {
-				display_d("cut message received from application")
+				if nbvls==0{
+					display_d("Cut message received from application")
+				} else {
+					display_d("Cut message received from a controler")
+				}
+				
 				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction)
 
 				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
@@ -354,14 +358,9 @@ func main() {
 					msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls))
 			} else {
 				sndmsg = ""
-				continue
+				display_d("Cut saved to file")
 			}
-			display_d("Cut saved to file")
-
-			// unknown or not handled message type
-			// default:
-			// 	display_e("Unknown or not handled message type")
-			// 	continue
+			
 		}
 
 		// send message to successor

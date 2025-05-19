@@ -37,7 +37,7 @@ const (
 	TypeField               string = "typ"   // type of message
 	UptField                string = "upt"   // content of update for application
 	cutNumber               string = "cnb"   // number of next cut
-	NumberVirtualClockSaved string = "nbvcl" // number of virtual clock saved
+	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 )
 
 var outputDir *string = flag.String("o", "./output", "output directory")
@@ -191,8 +191,8 @@ func receive(textArea *widget.Entry) {
 
 			oldTextUpdated := utils.ApplyDiffs(lastText, rcvuptdiffs) // Apply the diffs to the last remote text
 			utils.SaveModifs(lastText, oldTextUpdated, localSaveFilePath)
+			newText := utils.ApplyDiffs(cur, rcvuptdiffs) // Apply the diffs to the current text
 			lastText = oldTextUpdated
-			newText := utils.ApplyDiffs(cur, utils.ComputeDiffs(cur, lastText)) // Apply the diffs to the current text
 
 			fyne.Do(func() {
 				textArea.SetText(newText)
