@@ -20,9 +20,13 @@ import (
 
 const (
 	// message type to be sent to controler
-	MsgAppRequest  string = "rqa" // request critical section
-	MsgAppRelease  string = "rla" // release critical section
+	MsgAppRequest string = "rqa" // request critical section
+	MsgAppRelease string = "rla" // release critical section
+	MsgAppDied    string = "apd" // app died
 	// message type to be receive from controler
+	MsgAppStartSc  string = "ssa" // start critical section
+	MsgAppUpdate   string = "upa" // update critical section
+	MsgAppShallDie string = "shd" // app shall die
 	MsgAppStartSc  string = "ssa" // start critical section
 	MsgAppUpdate   string = "upa" // update critical section
 	MsgInitialSize string = "siz" // number of lines in the log file
@@ -39,6 +43,7 @@ var outputDir *string = flag.String("o", "./output", "output directory")
 
 // Interval in seconds between autosaves
 const autoSaveInterval = 200 * time.Millisecond
+
 // const autoSaveInterval = 2 * time.Second
 
 var id *int = flag.Int("id", 0, "id of site")
@@ -54,12 +59,11 @@ var lastText string
 var sectionAccess bool = false
 var sectionAccessRequested bool = false
 
-
 func main() {
 
 	// Parse command line arguments
 	flag.Parse()
-	if *id < 0{
+	if *id < 0 {
 		display_e("Invalid site id")
 		return
 	}
@@ -74,7 +78,7 @@ func main() {
 	sendInitial(utils.LineCountSince(0, localSaveFilePath))
 
 	go send(textArea)
-	go receive(textArea)
+	go receive(textArea, myWindow)
 
 	// Display the window
 	myWindow.ShowAndRun()
@@ -121,8 +125,8 @@ func send(textArea *widget.Entry) {
 				msg_format(UptField, string(sndmsgBytes))
 			sectionAccess = false
 			display_d("Critical section released")
-		
-		// Request access to the critical section if the text has changed
+
+			// Request access to the critical section if the text has changed
 		} else if (cur != lastText) && (!sectionAccessRequested) {
 			sectionAccessRequested = true
 			sndmsg = msg_format(TypeField, MsgAppRequest)
@@ -132,11 +136,10 @@ func send(textArea *widget.Entry) {
 			fmt.Println(sndmsg)
 		}
 		mutex.Unlock()
-		time.Sleep(autoSaveInterval)
 	}
 }
 
-func receive(textArea *widget.Entry) {
+func receive(textArea *widget.Entry, myWindow fyne.Window) {
 	var rcvmsg string
 	var rcvtyp string
 	var rcvuptdiffs []utils.Diff
@@ -144,12 +147,12 @@ func receive(textArea *widget.Entry) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		rcvmsgRaw, err := reader.ReadString('\n')
-        if err != nil {
-            display_e("Error reading message : "+err.Error())
-            continue
-        }
+		if err != nil {
+			display_e("Error reading message : " + err.Error())
+			continue
+		}
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
-		
+
 		mutex.Lock()
 		cur := textArea.Text
 		rcvtyp = findval(rcvmsg, TypeField, true)
@@ -160,9 +163,8 @@ func receive(textArea *widget.Entry) {
 		switch rcvtyp {
 		case MsgAppStartSc: // Receive start critical section message
 			sectionAccess = true
-			sectionAccessRequested = false
 			display_d("Critical section access granted")
-			
+
 		case MsgAppUpdate: // Receive update from remote version
 			rcvupt := findval(rcvmsg, UptField, true)
 			err := json.Unmarshal([]byte(rcvupt), &rcvuptdiffs)
@@ -182,6 +184,20 @@ func receive(textArea *widget.Entry) {
 			})
 
 			display_d("Critical section updated")
+
+		case MsgAppShallDie:
+			var sndmsg = msg_format(TypeField, MsgAppDied)
+			fmt.Println(sndmsg)
+			display_w("App died")
+			os.Stdout.Sync()
+			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
+				fyne.CurrentApp().Driver().Quit()
+			}, true)
+		}
+		mutex.Unlock()
+		rcvmsg = ""
+	}
+}
 
 		case MsgReturnNewText:
 
@@ -238,6 +254,8 @@ func initUI() (fyne.Window, *widget.Entry) {
 
 	// Set the window close intercept
 	myWindow.SetCloseIntercept(func() {
+		var sndmsg = msg_format(TypeField, MsgAppDied)
+		fmt.Println(sndmsg)
 		myWindow.Close()
 	})
 
