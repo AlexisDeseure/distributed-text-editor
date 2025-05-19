@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-var fieldsep = "/"
-var keyvalsep = "="
+var fieldsep = "~"
+var keyvalsep = "`"
 
 func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val

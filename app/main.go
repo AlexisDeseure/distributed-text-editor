@@ -50,8 +50,7 @@ const autoSaveInterval = 200 * time.Millisecond
 var id *int = flag.Int("id", 0, "id of site")
 
 var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
-var saveTrigger = make(chan struct{})
-var cutTrigger = make(chan struct{})
+
 
 var mutex = &sync.Mutex{}
 
@@ -61,6 +60,9 @@ var localCutFilePath string
 var lastText string
 var sectionAccess bool = false
 var sectionAccessRequested bool = false
+
+var cut bool = false
+var save bool = false
 
 func main() {
 
@@ -81,7 +83,7 @@ func main() {
 	sendInitial(utils.LineCountSince(0, localSaveFilePath))
 
 	go send(textArea)
-	go receive(textArea, myWindow)
+	go receive(textArea)
 
 	// Display the window
 	myWindow.ShowAndRun()
@@ -91,7 +93,6 @@ func sendInitial(size int) {
 	//if *id != 0 {return}
 	sndmsg := msg_format(TypeField, MsgInitialSize) +
 		msg_format(UptField, strconv.Itoa(size))
-	//display_d(sndmsg)
 	fmt.Println(sndmsg)
 
 	content, err := os.ReadFile(localSaveFilePath)
@@ -101,39 +102,29 @@ func sendInitial(size int) {
 	}
 	formatted := strings.ReplaceAll(string(content), "\n", "↩")
 	sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(formatted))
-	display_d(sndmsg)
 	fmt.Println(sndmsg)
 }
 
 func send(textArea *widget.Entry) {
 	var sndmsg string
-	var cut bool = false
+	
 	for {
-		select {
-		case <-cutTrigger:
-			cut = true
-
-		case <-saveTrigger:
-			if *debug && !sectionAccessRequested {
-				// Wait for the manual save trigger
-			}
-
-		default:
+		if !*debug{
 			time.Sleep(autoSaveInterval)
 		}
-
 		sndmsg = ""
 		mutex.Lock()
 		cur := textArea.Text
 
 		if cut {
-			var localCutFilePath = fmt.Sprintf("%s/cut.json", *outputDir)
+			localCutFilePath := fmt.Sprintf("%s/cut.json", *outputDir)
 			cut = false
 			nextCutNumber, _ := GetNextCutNumber(localCutFilePath)
 			sndmsg = msg_format(TypeField, MsgCut) +
 				msg_format(cutNumber, nextCutNumber) +
 				msg_format(NumberVirtualClockSaved, strconv.Itoa(0))
-		} else if sectionAccess {
+		} else if sectionAccess && (!*debug || save==true){
+			save = false
 			// Check if the controller has granted access to the critical section
 			newTextDiffs := utils.ComputeDiffs(lastText, cur)
 			newText := utils.ApplyDiffs(lastText, newTextDiffs)
@@ -152,7 +143,7 @@ func send(textArea *widget.Entry) {
 			display_d("Critical section released")
 
 			// Request access to the critical section if the text has changed
-		} else if (cur != lastText) && (!sectionAccessRequested) {
+		} else if (cur != lastText) && (!sectionAccessRequested) && (!*debug || save==true){
 			sectionAccessRequested = true
 			sndmsg = msg_format(TypeField, MsgAppRequest)
 		}
@@ -164,7 +155,7 @@ func send(textArea *widget.Entry) {
 	}
 }
 
-func receive(textArea *widget.Entry, myWindow fyne.Window) {
+func receive(textArea *widget.Entry) {
 	var rcvmsg string
 	var rcvtyp string
 	var rcvuptdiffs []utils.Diff
@@ -213,7 +204,6 @@ func receive(textArea *widget.Entry, myWindow fyne.Window) {
 		case MsgAppShallDie:
 			var sndmsg = msg_format(TypeField, MsgAppDied)
 			fmt.Println(sndmsg)
-			display_w("App died")
 			os.Stdout.Sync()
 			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
 				fyne.CurrentApp().Driver().Quit()
@@ -275,14 +265,17 @@ func initUI() (fyne.Window, *widget.Entry) {
 	// button to create a cut and save vectorial clock
 	cutBtn := widget.NewButton("Cut", func() {
 		// triggers the saving of vector clocks
-		go func() { cutTrigger <- struct{}{} }()
+		mutex.Lock()
+		defer mutex.Unlock()
+		cut = true
 	})
 
 	// Set the window content
 	if *debug {
 		saveBtn := widget.NewButton("Save", func() {
-			// Déclenche la sauvegarde via le channel
-			go func() { saveTrigger <- struct{}{} }()
+			mutex.Lock()
+			defer mutex.Unlock()
+			save = true
 		})
 		bottomButtons := container.NewHBox(saveBtn, cutBtn)
 		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)

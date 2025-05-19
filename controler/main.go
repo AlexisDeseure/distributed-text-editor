@@ -129,9 +129,6 @@ func main() {
 
 		nbcut := findval(rcvmsg, cutNumber, false)
 
-		nbvls, _ := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
-		display_d(findval(rcvmsg, NumberVirtualClockSaved, false))
-
 		ignored := false
 
 		// if the message is not for this site, ignore it
@@ -161,7 +158,6 @@ func main() {
 				}
 			}
 		} else {
-			display_w("forwarding: " + rcvtyp + " to " + s_destid)
 			ignored = true
 		}
 
@@ -285,7 +281,6 @@ func main() {
 
 			// If every other site is initialized we can start comparing sizes
 			if initializedSites >= *N-1 {
-				display_w("done")
 				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size)+"|"+strconv.Itoa(*id))
 			}
 
@@ -311,7 +306,6 @@ func main() {
 					display_e("Error while converting string to int")
 				}
 				sndmsg = msg_format(TypeField, MsgRequestPropagation) + msg_format(SiteIdDestField, strconv.Itoa(bestid))
-				display_d("Best id: " + strconv.Itoa(bestid))
 			}
 
 		case MsgRequestPropagation:
@@ -340,11 +334,14 @@ func main() {
 		case MsgAppShallDie:
 			sndmsg = msg_format(TypeField, MsgAppShallDie)
 			fmt.Println(sndmsg)
-			display_w("Controller died")
 			os.Stdout.Sync()
 			return
 
 		case MsgCut:
+			nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
+			if err != nil {
+				display_e("Error : "+err.Error())
+			}
 			if nbvls < *N {
 				display_d("cut message received from application")
 				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction)
