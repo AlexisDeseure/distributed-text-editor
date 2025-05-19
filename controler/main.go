@@ -113,7 +113,7 @@ func main() {
 
 		s_id := findval(rcvmsg, SiteIdField, false)
 		idrcv, _ = strconv.Atoi(s_id)
-		if idrcv > *N {
+		if idrcv < 0 || idrcv >= *N {
 			display_e("Invalid site id received")
 			continue
 		}
@@ -131,7 +131,7 @@ func main() {
 
 			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate && 
 			rcvtyp != MsgInitialSize && rcvtyp != MsgAcknowledgement && rcvtyp != MsgCompareSize && rcvtyp != MsgRequestPropagation &&
-			rcvtyp != MsgInitialText {
+			rcvtyp != MsgInitialText && rcvtyp != MsgPropagateText && rcvtyp != MsgReturnNewText {
 				// update the vectorial clock if the message is not from the application
 				var err error
 				// get the vectorial clock from the message
@@ -154,10 +154,11 @@ func main() {
 		}
 
 		// The message is forwarded to the next controler
+		// Variable 'ignored' can be used later to determine if a message should be ignored or not
+		// Some messages need to use forwarded messages and some need to really ignore them
 		if ignored {
-			currentAction++	
-			fmt.Println(sndmsg)
-			continue
+			currentAction++	// ?????
+			fmt.Println(rcvmsg)
 		}
 
 		sndmsg = ""
@@ -248,19 +249,24 @@ func main() {
 			msg := findval(rcvmsg, UptField, true)
 			size, err = strconv.Atoi(msg)
 			if err != nil {
-				display_e("Error while converting string to int")
+				display_e("Error while converting string to int: " + err.Error())
 			}
 
 		case MsgInitialText:
 
 			text = findval(rcvmsg, UptField, true)
+
 			// All controllers that are not controller n°0 should inform controller n°0 that they are ready
 			if *id != 0 {
-				//sndmsg = msg_format(TypeField, MsgAcknowledgement) + msg_format(SiteIdDestField, strconv.Itoa(0))
+				sndmsg = msg_format(TypeField, MsgAcknowledgement) + msg_format(SiteIdDestField, strconv.Itoa(0))
 			}
 
 
 		case MsgAcknowledgement:
+
+			if ignored {
+				continue
+			}
 
 			// This message can only be sent to controler n°0.
 			// This controler will then know when every other controler is ready to communicate 
@@ -268,6 +274,7 @@ func main() {
 
 			// If every other site is initialized we can start comparing sizes
 			if initializedSites >= *N - 1 {
+				display_w("done")
 				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size) + "|" + strconv.Itoa(*id))
 			}
 			
@@ -297,6 +304,10 @@ func main() {
 			}
 
 		case MsgRequestPropagation:
+
+			if ignored {
+				continue
+			}
 
 			best = true
 			sndmsg = msg_format(TypeField, MsgPropagateText) + msg_format(UptField, text)

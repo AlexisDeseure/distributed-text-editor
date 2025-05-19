@@ -20,11 +20,11 @@ import (
 
 const (
 	// message type to be sent to controler
-	MsgAppRequest string = "rqa" // request critical section
-	MsgAppRelease string = "rla" // release critical section
+	MsgAppRequest  string = "rqa" // request critical section
+	MsgAppRelease  string = "rla" // release critical section
 	// message type to be receive from controler
-	MsgAppStartSc string = "ssa" // start critical section
-	MsgAppUpdate  string = "upa" // update critical section
+	MsgAppStartSc  string = "ssa" // start critical section
+	MsgAppUpdate   string = "upa" // update critical section
 	MsgInitialSize string = "siz" // number of lines in the log file
 	MsgInitialText string = "txt" // Initial text when the app begins
 	MsgReturnNewText string = "ret" // return the new common text content to the site 
@@ -84,29 +84,23 @@ func sendInitial(size int) {
 		//if *id != 0 {return}
 		sndmsg := msg_format(TypeField, MsgInitialSize) +
 				msg_format(UptField, strconv.Itoa(size))
+		//display_d(sndmsg)
 		fmt.Println(sndmsg)
 
 		content, err := os.ReadFile(localSaveFilePath)
 		if err != nil {
-			fmt.Println("Error while reading log file:", err)
+			display_e("Error while reading log file: " + err.Error())
 			return
 		}
-		sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(content))
+		formatted := strings.ReplaceAll(string(content), "\n", "↩")
+		sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(formatted))
+		display_d(sndmsg)
 		fmt.Println(sndmsg)
 }
 
 func send(textArea *widget.Entry) {
 	var sndmsg string
 	for {
-
-		if *debug && !sectionAccessRequested {
-			// Wait for the manual save trigger
-			<-saveTrigger
-		} else {
-			// Wait for the autosave interval
-			time.Sleep(autoSaveInterval)
-		}
-
 		sndmsg = ""
 		mutex.Lock()
 		cur := textArea.Text
@@ -126,7 +120,6 @@ func send(textArea *widget.Entry) {
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
 			sectionAccess = false
-			sectionAccessRequested = false
 			display_d("Critical section released")
 		
 		// Request access to the critical section if the text has changed
@@ -139,6 +132,7 @@ func send(textArea *widget.Entry) {
 			fmt.Println(sndmsg)
 		}
 		mutex.Unlock()
+		time.Sleep(autoSaveInterval)
 	}
 }
 
@@ -164,9 +158,9 @@ func receive(textArea *widget.Entry) {
 		}
 
 		switch rcvtyp {
-
 		case MsgAppStartSc: // Receive start critical section message
 			sectionAccess = true
+			sectionAccessRequested = false
 			display_d("Critical section access granted")
 			
 		case MsgAppUpdate: // Receive update from remote version
@@ -191,36 +185,35 @@ func receive(textArea *widget.Entry) {
 
 		case MsgReturnNewText:
 
-			/*text := findval(rcvmsg, UptField, false)
-			err := os.WriteFile(localSaveFilePath, []byte(text), 0644)
+			text := findval(rcvmsg, UptField, false)
+			original := strings.ReplaceAll(text, "↩", "\n")
+			err := os.WriteFile(localSaveFilePath, []byte(original), 0644)
 			if err != nil {
 				display_e("Error while writing into log file: " + err.Error())
-			}*/
+			}
 
+			content, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
+			if err != nil {
+				display_e("Error while reading log file: " + err.Error())
+			}
+
+			fyne.Do(func() {
+				textArea.SetText(content)
+				textArea.Refresh()
+				lastText = content
+			})
 		}
 		mutex.Unlock()
 		rcvmsg = ""
 	}
 }
 
-func saveTextToFile(path string, content string) error {
-
-	return os.WriteFile(path, []byte(content), 0644)
-}
-
-func processText(oldContent string, newContent string) {
-
-	utils.SaveModifs(oldContent, newContent, localSaveFilePath)
-}
-
 func initUI() (fyne.Window, *widget.Entry) {
-	var content fyne.CanvasObject
-
 	// Create app
 	myApp := app.New()
 
 	// Create a window
-	myWindow := myApp.NewWindow("Distributed Editor n"+fmt.Sprint(*id))
+	myWindow := myApp.NewWindow("Distributed Editor n" + fmt.Sprint(*id))
 	myWindow.Resize(fyne.NewSize(800, 600))
 
 	// Define the text area
@@ -241,21 +234,10 @@ func initUI() (fyne.Window, *widget.Entry) {
 	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
 	// Set the window content
-	if *debug {
-		saveBtn := widget.NewButton("Save", func() {
-			// Déclenche la sauvegarde via le channel
-			go func() { saveTrigger <- struct{}{} }()
-		})
-		content = container.NewBorder(nil, saveBtn, nil, nil, scrollable)
-	} else {
-		content = container.NewBorder(nil, nil, nil, nil, scrollable)
-	}
-
-	myWindow.SetContent(content)
+	myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
 
 	// Set the window close intercept
 	myWindow.SetCloseIntercept(func() {
-		myWindow.SetCloseIntercept(nil)
 		myWindow.Close()
 	})
 
