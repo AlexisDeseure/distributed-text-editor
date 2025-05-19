@@ -126,7 +126,7 @@ func main() {
 		ignored := false
 
 		// if the message is not for this site, ignore it
-		if s_destid == "" || destidrcv == *id {
+		if rcvtyp != MsgReceiptSc || destidrcv == *id {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
 			currentAction++

@@ -156,7 +156,7 @@ func receive(textArea *widget.Entry, myWindow fyne.Window) {
 	for {
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
-			display_e("Error reading message : " + err.Error())
+			//display_e("Error reading message : " + err.Error())
 			continue
 		}
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
@@ -229,6 +229,9 @@ func receive(textArea *widget.Entry, myWindow fyne.Window) {
 }
 
 func initUI() (fyne.Window, *widget.Entry) {
+
+	var content fyne.CanvasObject
+
 	// Create app
 	myApp := app.New()
 
@@ -254,7 +257,18 @@ func initUI() (fyne.Window, *widget.Entry) {
 	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
 	// Set the window content
-	myWindow.SetContent(container.NewBorder(nil, nil, nil, nil, scrollable))
+	if *debug {
+        saveBtn := widget.NewButton("Save", func() {
+		// Déclenche la sauvegarde via le channel
+		go func() { saveTrigger <- struct{}{} }()
+	})
+		content = container.NewBorder(nil, saveBtn, nil, nil, scrollable)
+	} else {
+		content = container.NewBorder(nil, nil, nil, nil, scrollable)
+		
+	}
+
+	myWindow.SetContent(content)
 
 	// Set the window close intercept
 	myWindow.SetCloseIntercept(func() {
