@@ -135,7 +135,6 @@ func main() {
 		if s_destid == "" || destidrcv == *id {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
-			currentAction++
 
 			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate &&
 				rcvtyp != MsgInitialSize && rcvtyp != MsgAcknowledgement && rcvtyp != MsgCompareSize && rcvtyp != MsgRequestPropagation &&
@@ -322,7 +321,6 @@ func main() {
 				text = findval(rcvmsg, UptField, false)
 				sndmsg = msg_format(TypeField, MsgReturnNewText) + msg_format(UptField, text)
 				fmt.Println(sndmsg)
-				//currentAction++	// ????????? Est-ce qu'on doit incrémenter une 2e fois du coup ?
 				sndmsg = msg_format(TypeField, MsgPropagateText) + msg_format(UptField, text)
 			}
 
@@ -348,7 +346,7 @@ func main() {
 					display_d("Cut message received from a controler")
 				}
 				
-				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction)
+				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction+1)
 
 				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
 				nbvls++
