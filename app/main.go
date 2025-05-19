@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"bufio"
-	"strings"
 	"strconv"
 
 	"fyne.io/fyne/v2"
