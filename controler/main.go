@@ -33,7 +33,8 @@ const (
 	SiteIdField         string = "sid" // site id of sender
 	SiteIdDestField     string = "did" // site id of destination
 	VectorialClockField string = "vcl" // vectorial clock value
-	ActionNumberField   string = "act" // number of the site's current action
+	cutNumber string = "cnb" // number of next cut
+	NumberVirtualClockSaved string = "nbvls" // number of virtual clock saved
 )
 
 type CompareElement struct {
@@ -52,8 +53,10 @@ var id *int = flag.Int("id", 0, "id of site")
 var N *int = flag.Int("N", 1, "number of sites")
 var h int = 0
 
-func main() {
+var outputDir *string = flag.String("o", "./output", "output directory")
+var localCutFilePath = fmt.Sprintf("%s/cut.json", *outputDir)
 
+func main() {
 	flag.Parse()
 	if *id < 0 || *id >= *N {
 		display_e("Invalid site id")
@@ -110,13 +113,17 @@ func main() {
 		s_destid := findval(rcvmsg, SiteIdDestField, false)
 		destidrcv, _ = strconv.Atoi(s_destid)
 
+		nbcut := findval(rcvmsg, cutNumber, false)
+
+		nbvls, _ := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
+		display_d(findval(rcvmsg, NumberVirtualClockSaved, false))
 		// if the message is not for this site, ignore it
 		if s_destid == "" || destidrcv == *id {
 			// update the clock of the site
 			h = resetClock(h, hrcv)
 			currentAction++
 
-			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate {
+			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate && rcvtyp != MsgCut {
 				// update the vectorial clock if the message is not from the application
 				var err error
 				// get the vectorial clock from the message
@@ -217,17 +224,24 @@ func main() {
 					display_d("Forwarding receipt message")
 				}
 			}
+		case MsgCut:
+			if(nbvls < *N) {
+				display_d("cut message received from application")
+				var siteActionNumber string
+				siteActionNumber = fmt.Sprintf("site_%d_action_%d", *id, currentAction)
 
-		case MsgAppDied:
-			sndmsg = msg_format(TypeField, MsgAppShallDie)
-			fmt.Println(sndmsg)
+				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
+				nbvls ++
 
-		case MsgAppShallDie:
-			sndmsg = msg_format(TypeField, MsgAppShallDie)
-			fmt.Println(sndmsg)
-			display_w("Controller died")
-			os.Stdout.Sync()
-			return
+				sndmsg = msg_format(TypeField, MsgCut) +
+								msg_format(cutNumber, nbcut) +
+								msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls))
+			}else{
+				sndmsg = ""
+				continue
+			}
+			display_d("Cut saved to file")
+
 
 			// unknown or not handled message type
 			// default:
