@@ -45,16 +45,16 @@ Deux versions existent alors :
 
 Quand l'application demande l'accès à la section critique, l'utilisateur peut toujours continuer ses modifications et la partie visuelle n'est pas stockée localement dans un fichier. 
 A la réception de l'accès à la section critique, l'application modifie son fichier local de log avec ses modifications en cours et envoie le contenu de la mise à jour à son contrôleur tout en libérant la section critique.
-Si l'application reçoit, du contrôleur, une ou plusieurs modifications du contenu de la donnée partagée, les modifications sont appliquées sur la copie locale du fichier partagé à partir de la dernière version à jour. De plus, l'UI qui affiche le texte à l'utilisateur est mise à jour en appliquant directement les modifications de la version reçu sur la vertion affichée (même si la version affiché ne correspond pas à la version locale sauvegardée qui elle correspond à la version sauvegardé localement par tous les sites).
+Si l'application reçoit, du contrôleur, une ou plusieurs modifications du contenu de la donnée partagée, les modifications sont appliquées sur la copie locale du fichier partagé à partir de la dernière version à jour. De plus, l'UI qui affiche le texte à l'utilisateur est mise à jour en appliquant directement les modifications de la version reçu sur la version affichée (même si la version affichée ne correspond pas à la version locale sauvegardée, qui elle, correspond à la version sauvegardée localement par tous les sites).
 
 Voici un résumé de l'architecture d'une instance de l'application : 
 ![Schéma de la logique de l'application](doc/schema_application.png)
 
-D'autres messages peuvent aussi être envoyé/reçu par l'application :
-* Message de réception de l'indication d'une fermeture de l'application : si l'utilisateur ferme une des fenêtre ouverte, il faut toutes les fermer pour éviter des soucis de commmunication. Ce message, une fois reçu, entraîne la fermeture de la fenêtre Fyne.
+D'autres messages peuvent aussi être envoyés/reçus par l'application :
+* Message de réception de l'indication d'une fermeture de l'application : si l'utilisateur ferme une des fenêtres ouvertes, il faut toutes les fermer pour éviter des soucis de commmunication. Ce message, une fois reçu, entraîne la fermeture de la fenêtre Fyne.
 * Message de réception de modification du texte local pour l'initialisation : lors de l'initialisation, si des sites avaient des fichiers sauvegardés différents, celui qui a le plus de lignes est retenu et son contenu est envoyé à tous les sites. A la réception de ce message l'application du site doit modifier son texte affiché ainsi que celui sauvegardé localement pour garantir la synchronisation globale entre les sites.
-* Messsage d'envoie du nombre de ligne et du contenu : servent pour les mêmes raisons que le point précédent pour transmettre l'information au contrôleur
-* Message d'envoie d'une demand de coupe au contrôleur pour initier la sauvegarde répartie datée
+* Messsage d'envoie du nombre de lignes et du contenu : servent pour les mêmes raisons que le point précédent pour transmettre l'information au contrôleur
+* Message d'envoie d'une demande de coupe au contrôleur pour initier la sauvegarde répartie datée
 
 
 ### Couche de contrôle
