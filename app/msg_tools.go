@@ -3,21 +3,22 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
 
-var fieldsep = "~"
-var keyvalsep = "`"
+var (
+	fieldsep  = "~"
+	keyvalsep = "`"
+)
 
 func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val
 }
 
 func findval(msg string, key string, verbose bool) string {
-
 	if len(msg) < 4 {
 		if verbose {
 			display_e("Message length too short")
@@ -48,7 +49,7 @@ func findval(msg string, key string, verbose bool) string {
 }
 
 func GetNextCutNumber(filePath string) (string, error) {
-	data, err := ioutil.ReadFile(filepath.Clean(filePath))
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return "cut_number_1", fmt.Errorf("failed to read file: %w", err)
 	}

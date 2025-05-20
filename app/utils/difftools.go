@@ -18,7 +18,6 @@ type Diff struct {
 
 // This method compares oldText and newText and returns a Diff slice (array), with one Diff per change block
 func ComputeDiffs(oldText, newText string) []Diff {
-
 	// A rune is an integer type that represents a character
 	rOld := []rune(oldText)
 	rNew := []rune(newText)
@@ -32,26 +31,20 @@ func ComputeDiffs(oldText, newText string) []Diff {
 	dp := make([][]int, nOld+1)
 
 	for i := range dp {
-
 		// Each line dp[i] is a slice of size nNew + 1, set to 0 first
 		dp[i] = make([]int, nNew+1)
 	}
 
 	// Go through the matrix, from bottom right to top left
 	for i := nOld - 1; i >= 0; i-- {
-
 		for j := nNew - 1; j >= 0; j-- {
-
 			// Compare the character (rune) at position i of the old text
 			// and the character at position j of the new text
 			if rOld[i] == rNew[j] {
-
 				// If they are the same character, we increase the length of the LCS by one
 				// compared to dp[i+1][j+1], which represents the length of the LCS for next suffixes
 				dp[i][j] = dp[i+1][j+1] + 1
-
 			} else {
-
 				// Else, we take the max between:
 				// - dp[i + 1][j] (ignore rOld[i] and compare rOld[i + 1:] with rNew[j:])
 				// - dp[i][j + 1] (ignore rNew[j] and compare rOld[i] with rNew[j + 1:])
@@ -66,7 +59,6 @@ func ComputeDiffs(oldText, newText string) []Diff {
 	i, j, pos := 0, 0, 0
 
 	for i < nOld || j < nNew {
-
 		// If runes match, we continue
 		if i < nOld && j < nNew && rOld[i] == rNew[j] {
 
@@ -101,7 +93,6 @@ func ComputeDiffs(oldText, newText string) []Diff {
 
 			// Create a new Diff object and add it to the slice (array)
 			diffs = append(diffs, Diff{
-
 				Pos:       start,
 				NbDeleted: oldLen,
 				NewText:   string(insRunes),
@@ -151,42 +142,42 @@ func ApplyDiffsSequential(base string, diffs []Diff) string {
 // Diffs are applied from last to first so that the indices stay valid after each Diff is applied
 
 func ApplyDiffs(base string, diffs []Diff) string {
-    // Convert the base text to a slice of runes
-    rBase := []rune(base)
+	// Convert the base text to a slice of runes
+	rBase := []rune(base)
 
-    // Iterate backwards through the slice
-    for i := len(diffs) - 1; i >= 0; i-- {
-        d := diffs[i]
+	// Iterate backwards through the slice
+	for i := len(diffs) - 1; i >= 0; i-- {
+		d := diffs[i]
 
-        // If d.Pos is beyond the current text, pad with spaces
-        if d.Pos > len(rBase) {
-            pad := make([]rune, d.Pos-len(rBase))
-            for j := range pad {
-                pad[j] = ' '
-            }
-            rBase = append(rBase, pad...)
-        }
+		// If d.Pos is beyond the current text, pad with spaces
+		if d.Pos > len(rBase) {
+			pad := make([]rune, d.Pos-len(rBase))
+			for j := range pad {
+				pad[j] = ' '
+			}
+			rBase = append(rBase, pad...)
+		}
 
-        // Compute safe start and end for deletion
-        start := d.Pos
-        end := d.Pos + d.NbDeleted
-        if start < 0 {
-            start = 0
-        }
-        if end > len(rBase) {
-            end = len(rBase)
-        }
+		// Compute safe start and end for deletion
+		start := d.Pos
+		end := d.Pos + d.NbDeleted
+		if start < 0 {
+			start = 0
+		}
+		if end > len(rBase) {
+			end = len(rBase)
+		}
 
-        // Split before/after the deletion window
-        before := rBase[:start]
-        after := rBase[end:]
+		// Split before/after the deletion window
+		before := rBase[:start]
+		after := rBase[end:]
 
-        // Insert the new text
-        ins := []rune(d.NewText)
-        rBase = append(before, append(ins, after...)...)
-    }
+		// Insert the new text
+		ins := []rune(d.NewText)
+		rBase = append(before, append(ins, after...)...)
+	}
 
-    return string(rBase)
+	return string(rBase)
 }
 
 // Convert a diff object to a json string
@@ -207,7 +198,7 @@ func SaveModifs(oldText, newText string, saveFilePath string) error {
 
 // Convert a diff object to a string, and save it to the file
 func appendDiffToFile(d Diff, saveFilePath string) error {
-	f, err := os.OpenFile(saveFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(saveFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}

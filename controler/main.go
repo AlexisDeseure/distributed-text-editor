@@ -22,25 +22,25 @@ const (
 	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
 	MsgPropagateText      string = "prp" // send the associated text to the next controller
 	// message type to be receive from application
-	MsgAppRequest         string = "rqa" // request critical section
-	MsgAppRelease         string = "rla" // release critical section
-	MsgAppDied            string = "apd" // app died
-	MsgInitialSize        string = "siz" // number of lines in the log file
-	MsgInitialText        string = "txt" // Initial text when the app begins
+	MsgAppRequest  string = "rqa" // request critical section
+	MsgAppRelease  string = "rla" // release critical section
+	MsgAppDied     string = "apd" // app died
+	MsgInitialSize string = "siz" // number of lines in the log file
+	MsgInitialText string = "txt" // Initial text when the app begins
 	// message type to be sent to application
-	MsgAppStartSc         string = "ssa" // start critical section
-	MsgAppUpdate          string = "upa" // update critical section
-	MsgReturnNewText      string = "ret" // return the new common text content to the site
+	MsgAppStartSc    string = "ssa" // start critical section
+	MsgAppUpdate     string = "upa" // update critical section
+	MsgReturnNewText string = "ret" // return the new common text content to the site
 )
 
 const (
-	TypeField               string = "typ"   // type of message
-	UptField                string = "upt"   // content of update for application
-	HlgField                string = "hlg"   // site clock value
-	SiteIdField             string = "sid"   // site id of sender
-	SiteIdDestField         string = "did"   // site id of destination
-	VectorialClockField     string = "vcl"   // vectorial clock value
-	cutNumber               string = "cnb"   // number of next cut
+	TypeField               string = "typ" // type of message
+	UptField                string = "upt" // content of update for application
+	HlgField                string = "hlg" // site clock value
+	SiteIdField             string = "sid" // site id of sender
+	SiteIdDestField         string = "did" // site id of destination
+	VectorialClockField     string = "vcl" // vectorial clock value
+	cutNumber               string = "cnb" // number of next cut
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 )
 
@@ -56,21 +56,26 @@ type TabElement struct {
 
 type Tab []TabElement
 
-var id *int = flag.Int("id", 0, "id of site")
-var N *int = flag.Int("N", 1, "number of sites")
-var h int = 0
+var (
+	id *int = flag.Int("id", 0, "id of site")
+	N  *int = flag.Int("N", 1, "number of sites")
+	h  int  = 0
+)
 
-var size int = 0
-var text string = ""
-var best bool = false
+var (
+	size int    = 0
+	text string = ""
+	best bool   = false
+)
 
 var initializedSites int = 0
 
-var outputDir *string = flag.String("o", "./output", "output directory")
-var localCutFilePath = fmt.Sprintf("%s/cut.json", *outputDir)
+var (
+	outputDir        *string = flag.String("o", "./output", "output directory")
+	localCutFilePath         = fmt.Sprintf("%s/cut.json", *outputDir)
+)
 
 func main() {
-
 	flag.Parse()
 	if *id < 0 || *id >= *N {
 		display_e("Invalid site id")
@@ -129,21 +134,19 @@ func main() {
 
 		nbcut := findval(rcvmsg, cutNumber, false)
 
-		ignored := false
-
 		// if the message is not for this site, ignore it
 		if s_destid == "" || destidrcv == *id {
+
 			// update the clock of the site
 			h = resetClock(h, hrcv)
 
-			if rcvtyp != MsgAppRequest && rcvtyp != MsgAppRelease && rcvtyp != MsgAppStartSc && rcvtyp != MsgAppUpdate &&
-				rcvtyp != MsgInitialSize && rcvtyp != MsgAcknowledgement && rcvtyp != MsgCompareSize && rcvtyp != MsgRequestPropagation &&
-				rcvtyp != MsgInitialText && rcvtyp != MsgPropagateText && rcvtyp != MsgReturnNewText && rcvtyp != MsgAppDied &&
-				rcvtyp != MsgAppShallDie && rcvtyp != MsgCut {
+			// get a possible vectorial clock from the message
+			tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
+
+			if tmp_vcrc != "" {
+
 				// update the vectorial clock if the message is not from the application
 				var err error
-				// get the vectorial clock from the message
-				tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
 				err = json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
 				if err != nil {
 					display_e(rcvmsg + " : Error unmarshalling vectorial clock: " + err.Error())
@@ -156,15 +159,6 @@ func main() {
 					display_e("JSON encoding error: " + err.Error())
 				}
 			}
-		} else {
-			ignored = true
-		}
-
-		// The message is forwarded to the next controler
-		// Variable 'ignored' can be used later to determine if a message should be ignored or not
-		// Some messages need to use forwarded messages and some need to really ignore them
-		if ignored {
-			fmt.Println(rcvmsg)
 		}
 
 		sndmsg = ""
@@ -269,7 +263,10 @@ func main() {
 
 		case MsgAcknowledgement:
 
-			if ignored {
+			// If the message is not for this site, forward it to the next one
+			if destidrcv != *id {
+				display_d("Forwarding acknowledgement message")
+				fmt.Println(rcvmsg)
 				continue
 			}
 
@@ -308,7 +305,10 @@ func main() {
 
 		case MsgRequestPropagation:
 
-			if ignored {
+			// If the message is not for this site, forward it to the next one
+			if destidrcv != *id {
+				display_d("Forwarding propagation request")
+				fmt.Println(rcvmsg)
 				continue
 			}
 
@@ -337,15 +337,15 @@ func main() {
 		case MsgCut:
 			nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
 			if err != nil {
-				display_e("Error : "+err.Error())
+				display_e("Error : " + err.Error())
 			}
 			if nbvls < *N {
-				if nbvls==0{
+				if nbvls == 0 {
 					display_d("Cut message received from application")
 				} else {
 					display_d("Cut message received from a controler")
 				}
-				
+
 				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction+1)
 
 				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
@@ -358,7 +358,7 @@ func main() {
 				sndmsg = ""
 				display_d("Cut saved to file")
 			}
-			
+
 		}
 
 		// send message to successor

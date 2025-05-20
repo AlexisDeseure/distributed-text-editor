@@ -1,7 +1,6 @@
 package main
 
 import (
-	"app/utils"
 	"bufio"
 	"encoding/json"
 	"flag"
@@ -12,38 +11,46 @@ import (
 	"sync"
 	"time"
 
+	"app/utils"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 )
 
+// message types
 const (
-	// message type to be sent to controler
-	MsgAppRequest string = "rqa" // request critical section
-	MsgAppRelease string = "rla" // release critical section
-	MsgAppDied    string = "apd" // app died
-	MsgCut        string = "cut" // save the vectorial clock value
-	MsgInitialSize   string = "siz" // number of lines in the log file
-	MsgInitialText   string = "txt" // Initial text when the app begins
-	// message type to be receive from controler
+
+	// message types to be sent to controler
+	MsgAppRequest  string = "rqa" // request critical section
+	MsgAppRelease  string = "rla" // release critical section
+	MsgAppDied     string = "apd" // app died
+	MsgCut         string = "cut" // save the vectorial clock value
+	MsgInitialSize string = "siz" // number of lines in the log file
+	MsgInitialText string = "txt" // Initial text when the app begins
+
+	// message types to be receive from controler
 	MsgAppStartSc    string = "ssa" // start critical section
 	MsgAppUpdate     string = "upa" // update critical section
 	MsgAppShallDie   string = "shd" // app shall die
 	MsgReturnNewText string = "ret" // return the new common text content to the site
+
 )
 
+// message fields
 const (
-	TypeField               string = "typ"   // type of message
-	UptField                string = "upt"   // content of update for application
-	cutNumber               string = "cnb"   // number of next cut
+	TypeField               string = "typ" // type of message
+	UptField                string = "upt" // content of update for application
+	cutNumber               string = "cnb" // number of next cut
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
+
 )
 
 var outputDir *string = flag.String("o", "./output", "output directory")
 
 // Interval in seconds between autosaves
-const autoSaveInterval = 200 * time.Millisecond
+const autoSaveInterval = 500 * time.Millisecond
 
 // const autoSaveInterval = 2 * time.Second
 
@@ -51,21 +58,25 @@ var id *int = flag.Int("id", 0, "id of site")
 
 var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
 
-
 var mutex = &sync.Mutex{}
 
-var localSaveFilePath string
-var localCutFilePath string
+var (
+	localSaveFilePath string
+	localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir)
+)
 
-var lastText string
-var sectionAccess bool = false
-var sectionAccessRequested bool = false
+var (
+	lastText               string
+	sectionAccess          bool = false
+	sectionAccessRequested bool = false
+)
 
-var cut bool = false
-var save bool = false
+var (
+	cut  bool = false
+	save bool = false
+)
 
 func main() {
-
 	// Parse command line arguments
 	flag.Parse()
 	if *id < 0 {
@@ -77,10 +88,9 @@ func main() {
 
 	// Initialize the UI and get window and text area
 	myWindow, textArea := initUI()
-
 	lastText = textArea.Text
 
-	sendInitial(utils.LineCountSince(0, localSaveFilePath))
+	unifyVersions(utils.LineCountSince(0, localSaveFilePath))
 
 	go send(textArea)
 	go receive(textArea)
@@ -89,10 +99,9 @@ func main() {
 	myWindow.ShowAndRun()
 }
 
-func sendInitial(size int) {
-	//if *id != 0 {return}
-	sndmsg := msg_format(TypeField, MsgInitialSize) +
-		msg_format(UptField, strconv.Itoa(size))
+// This function starts a cycle that gathers the most up-to-date version of the common text and propagates it to each site
+func unifyVersions(size int) {
+	sndmsg := msg_format(TypeField, MsgInitialSize) + msg_format(UptField, strconv.Itoa(size))
 	fmt.Println(sndmsg)
 
 	content, err := os.ReadFile(localSaveFilePath)
@@ -100,30 +109,37 @@ func sendInitial(size int) {
 		display_e("Error while reading log file: " + err.Error())
 		return
 	}
+
+	// \n cannot be sent to the standard output without being misinterpreted
 	formatted := strings.ReplaceAll(string(content), "\n", "↩")
 	sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(formatted))
 	fmt.Println(sndmsg)
 }
 
+// A goroutine to manage local text saving and and to send modifications to other sites via the controller
 func send(textArea *widget.Entry) {
 	var sndmsg string
-	
+
 	for {
-		if !*debug{
+
+		if !*debug {
 			time.Sleep(autoSaveInterval)
 		}
+
 		sndmsg = ""
 		mutex.Lock()
 		cur := textArea.Text
 
 		if cut {
-			localCutFilePath := fmt.Sprintf("%s/cut.json", *outputDir)
+
 			cut = false
 			nextCutNumber, _ := GetNextCutNumber(localCutFilePath)
 			sndmsg = msg_format(TypeField, MsgCut) +
 				msg_format(cutNumber, nextCutNumber) +
 				msg_format(NumberVirtualClockSaved, strconv.Itoa(0))
-		} else if sectionAccess && (!*debug || save==true){
+
+		} else if sectionAccess && (!*debug || save) {
+
 			save = false
 			// Check if the controller has granted access to the critical section
 			newTextDiffs := utils.ComputeDiffs(lastText, cur)
@@ -143,7 +159,7 @@ func send(textArea *widget.Entry) {
 			display_d("Critical section released")
 
 			// Request access to the critical section if the text has changed
-		} else if (cur != lastText) && (!sectionAccessRequested) && (!*debug || save==true){
+		} else if (cur != lastText) && (!sectionAccessRequested) && (!*debug || save) {
 			sectionAccessRequested = true
 			sndmsg = msg_format(TypeField, MsgAppRequest)
 		}
@@ -155,6 +171,7 @@ func send(textArea *widget.Entry) {
 	}
 }
 
+// A goroutine to process received messages
 func receive(textArea *widget.Entry) {
 	var rcvmsg string
 	var rcvtyp string
@@ -164,7 +181,7 @@ func receive(textArea *widget.Entry) {
 	for {
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
-			//display_e("Error reading message : " + err.Error())
+			// display_e("Error reading message : " + err.Error())
 			continue
 		}
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
@@ -202,7 +219,7 @@ func receive(textArea *widget.Entry) {
 			display_d("Critical section updated")
 
 		case MsgAppShallDie:
-			var sndmsg = msg_format(TypeField, MsgAppDied)
+			sndmsg := msg_format(TypeField, MsgAppDied)
 			fmt.Println(sndmsg)
 			os.Stdout.Sync()
 			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
@@ -213,7 +230,7 @@ func receive(textArea *widget.Entry) {
 
 			text := findval(rcvmsg, UptField, false)
 			original := strings.ReplaceAll(text, "↩", "\n")
-			err := os.WriteFile(localSaveFilePath, []byte(original), 0644)
+			err := os.WriteFile(localSaveFilePath, []byte(original), 0o644)
 			if err != nil {
 				display_e("Error while writing into log file: " + err.Error())
 			}
@@ -235,7 +252,6 @@ func receive(textArea *widget.Entry) {
 }
 
 func initUI() (fyne.Window, *widget.Entry) {
-
 	var content fyne.CanvasObject
 
 	// Create app
@@ -289,7 +305,7 @@ func initUI() (fyne.Window, *widget.Entry) {
 
 	// Set the window close intercept
 	myWindow.SetCloseIntercept(func() {
-		var sndmsg = msg_format(TypeField, MsgAppDied)
+		sndmsg := msg_format(TypeField, MsgAppDied)
 		fmt.Println(sndmsg)
 		myWindow.Close()
 	})

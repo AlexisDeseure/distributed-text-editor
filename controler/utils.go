@@ -9,8 +9,10 @@ import (
 	"strings"
 )
 
-var fieldsep = "~"
-var keyvalsep = "`"
+var (
+	fieldsep  = "~"
+	keyvalsep = "`"
+)
 
 func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val
@@ -24,7 +26,6 @@ func resetClock(hlg, hrcv int) int {
 }
 
 func findval(msg string, key string, verbose bool) string {
-
 	if len(msg) < 4 {
 		if verbose {
 			display_e("Message length too short: " + msg)
@@ -96,12 +97,11 @@ func verifyScApproval(tab Tab) {
 		fmt.Println(sndmsg)
 		display_d("Entering critical section")
 	}
-
 }
 
 func saveCutJson(cutNumber string, vectorialClock []int, siteActionNumber string, filePath string) error {
 	display_d(cutNumber)
-	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
+	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("error opening/creating file: %w", err)
 	}
