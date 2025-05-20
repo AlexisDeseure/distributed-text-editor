@@ -8,7 +8,7 @@ Projet SR05 réalisé par (Groupe 12) :
 
 ## Description du projet
 
-Ce projet a pour but de créer une application distribuée permettant de traiter un fichier texte de manière décentralisée. Cette application comporte des sites reliés en réseau (anneau) entre eux afin de se partager les modifications du fichier texte. L'implémentation de l'algorithme de la file d'attente répartie permet de gérer la concordance entre les différents sites.
+Ce projet a pour but de créer une application distribuée permettant de traiter un fichier texte de manière décentralisée. Cette application comporte des sites reliés en réseau (anneau) entre eux afin de se partager les modifications du fichier texte. L'implémentation de l'algorithme de la file d'attente répartie permet de gérer la concordance entre les différents sites. De plus, l'algorithme de calcul d'instantanés rend possible la réalisation de plusieurs sauvegardes pendant l’exécution du programme.
 
 ## Exécution
 
