@@ -24,7 +24,7 @@ Pour exécuter le projet avec des paramètres spécifiques, il faut exécuter le
 ```
  avec `<nombre_d_instances>` le nombre d'instances de l'application à exécuter, `<reinitialiser_anciennes_sauvegardes>` devant prendre la valeur `1` si l'on souhaite réinitialiser les anciennes sauvegardes (n'importe quelle autre valeur ou rien sinon) et `<debug_mode>` devant prendre la valeur `1` si l'on souhaite activer le mode débogage : sauvegarde manuelle avec un bouton (n'importe quelle autre valeur ou rien sinon).
 
- Si le fichier run.sh n'est pas reconnu, il peut être nécessaire d'exécuter 'dos2unix run.sh' pour le formatter correctement.
+ Si le fichier `run.sh` n'est pas reconnu, il peut être nécessaire d'exécuter `dos2unix run.sh` pour le formatter correctement.
 
 ## Architecture
 
