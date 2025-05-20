@@ -94,3 +94,52 @@ D'autres messages peuvent aussi être envoyés/reçus par le contrôleur pour ga
     * `MsgInitialText` : message reçu de l'application contenant le texte local de l'application qui est ensuite sauvegardé localement dans le contrôleur
     * `MsgAcknowledgement` : message envoyé/reçu d'un contrôleur pour indiquer le nombre de ligne du fichier local de l'application aux autres contrôleurs
     * `MsgPropagateText` : message envoyé/reçu d'un controleur pour envoyer le texte de son application à tous les autres (celui qui a le fichier de `.log` localement avec le plus de lignes)
+
+
+### Sauvegarde répartie datée
+L'ensemble des sauvegardes, enregistrées durant l'exécution du programme, sont stockées dans le format JSON dans le fichier`output/cut.json`.
+
+
+Dans la structure JSON, la clé `cut_number_n` désigne la n-ième coupe réalisée durant l'exécution du code. De plus, chaque coupe a pour valeur un ensemble d'éléments ayant pour clé le numéro de la dernière action réalisée par chaque site de l'anneau ainsi que la valeur de son horloge vectorielle au moment de la sauvegarde. La clé `site_i_action_n` désigne la n-ième action du site i, la valeur lui étant associée est un tableau d'entiers de taille N (le nombre de sites) représentant son horloge vectorielle.
+
+
+Voici un exemple simple de coupe JSON pouvant être générée pour une exécution simple d'événements entre 3 sites.
+
+
+```json
+{
+  "cut_number_0": {
+    "site_0_action_1": [
+      1, // action interne site 0
+      0, // Compteur Site 1
+      0  // Compteur Site 2
+    ],
+    "site_1_action_1": [
+      0, // Compteur Site 0
+      1, // action interne site 1
+      0  // Compteur Site 2
+    ],
+    "site_2_action_1": [
+      0, // Compteur Site 0
+      0, // Compteur Site 1
+      1  // action interne site 2
+    ]
+  },
+  "cut_number_1": {
+    "site_0_action_2": [
+      2, // envoie un message au site 1 et transmet son horloge vectorielle
+      0, // Compteur Site 1
+      0  // Compteur Site 2
+    ],
+    "site_1_action_2": [
+      2, // max(0, 2) de la valeur de l'horloge vectorielle reçu avec le message
+      2, // Site 1 incrémente son compteur la réception du message
+      0  // Compteur Site 2
+    ],
+    "site_2_action_2": [
+      0, // Compteur Site 0
+      0, // Compteur Site 1
+      2  // action interne site 2
+    ]
+  }
+}
