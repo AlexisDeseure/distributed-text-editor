@@ -254,7 +254,9 @@ func main() {
 				}
 			}
 
+		// This message is sent by the site and contains the number of lines in the local log file (save file)
 		case MsgInitialSize:
+
 			display_d("Initial size received")
 			msg := findval(rcvmsg, UptField, true)
 			size, err := strconv.Atoi(msg)
@@ -263,12 +265,16 @@ func main() {
 			}
 			tabinit[*id] = size
 
+			// An acknowledgment message is sent to every other controller
+			// it contains the number of lines in the local save file of this controller 
 			sndmsg = msg_format(TypeField, MsgAcknowledgement) + 
 				msg_format(SiteIdField, strconv.Itoa(*id)) +
 				msg_format(UptField, strconv.Itoa(size))
 			display_d("Acknowledgement message sent")
 
+		// This message is sent by the site and contains each line stored in the local log file (save file)
 		case MsgInitialText:
+
 			// This message is always received after MsgInitialSize due to FIFO channels. 
 			// Thus, verification is only performed here in cases where all sites have acknowledged 
 			// their number of lines and this site has the maximum. If all the MsgAcknowledgement 
@@ -279,6 +285,7 @@ func main() {
 			sndmsg = verifyIfMaxNbLinesSite(tabinit) // verify if the site has the max and return the message to send 
 			// if it is correct else return an empty string
 
+		// This message is received from every other controller and contains the number of lines in their own local save file
 		case MsgAcknowledgement:
 
 			if idrcv != *id {
@@ -304,6 +311,8 @@ func main() {
 
 			}
 
+		// This message is sent by the controller with the longest local save file
+		// it contains the lines of its save file, to replace the save file of this one
 		case MsgPropagateText:
 
 			if idrcv != *id {
