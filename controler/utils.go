@@ -15,17 +15,32 @@ var (
 	keyvalsep = "`"
 )
 
+type CompareElement struct {
+	Clock int
+	Id    int
+}
+
+type TabElement struct {
+	Type  string
+	Clock int
+}
+
+type Tab []TabElement
+
+// msg_format constructs a key-value string using predefined separators
 func msg_format(key string, val string) string {
 	return fieldsep + keyvalsep + key + keyvalsep + val
 }
 
-func resetClock(hlg, hrcv int) int {
-	if hlg < hrcv {
-		return hrcv + 1
+// resetStamp returns the next logical timestamp, ensuring monotonicity
+func resetStamp(stamp, stamprcv int) int {
+	if stamp < stamprcv {
+		return stamprcv + 1
 	}
-	return hlg + 1
+	return stamp + 1
 }
 
+// findval searches a formatted message for a given key and returns its value
 func findval(msg string, key string, verbose bool) string {
 	if len(msg) < 4 {
 		if verbose {
@@ -56,6 +71,7 @@ func findval(msg string, key string, verbose bool) string {
 	return ""
 }
 
+// updateVectorialClock merges two vector clocks and increments the local entry
 func updateVectorialClock(oldVectorialClock []int, newVectorialClock []int) []int {
 	for i := range oldVectorialClock {
 		oldVectorialClock[i] = int(math.Max(float64(oldVectorialClock[i]), float64(newVectorialClock[i])))
@@ -64,6 +80,7 @@ func updateVectorialClock(oldVectorialClock []int, newVectorialClock []int) []in
 	return oldVectorialClock
 }
 
+// CreateDefaultTab initializes a Tab of length n with default type and zero clock
 func CreateDefaultTab(n int) Tab {
 	arr := make(Tab, n)
 	for i := range arr {
@@ -72,6 +89,7 @@ func CreateDefaultTab(n int) Tab {
 	return arr
 }
 
+// CreateTabInit returns an integer slice of length n filled with -1
 func CreateTabInit(n int) []int {
 	arr := make([]int, n)
 	for i := range arr {
@@ -80,6 +98,7 @@ func CreateTabInit(n int) []int {
 	return arr
 }
 
+// timestampComparison returns true if element a precedes b by clock, then id
 func timestampComparison(a, b CompareElement) bool {
 	if a.Clock < b.Clock {
 		return true
@@ -89,6 +108,7 @@ func timestampComparison(a, b CompareElement) bool {
 	return false
 }
 
+// verifyIfMaxNbLinesSite checks if this site has the maximum lines and constructs propagation message
 func verifyIfMaxNbLinesSite(arr []int) string {
 	var id_max int = 0
 	var v_max int = 0
@@ -96,14 +116,14 @@ func verifyIfMaxNbLinesSite(arr []int) string {
 		if v <= -1 {
 			return ""
 		}
-		if v > v_max { // the site with maximum nb lines is kept, if there is equality, the one with the minimum id is kept
+		if v > v_max {
 			v_max = v
 			id_max = id
 		}
 	}
-	if *id == id_max{
+	if *id == id_max {
 		display_d("Sending the text from app because it has the maximum number of lines")
-		return msg_format(TypeField, MsgPropagateText) + 
+		return msg_format(TypeField, MsgPropagateText) +
 			msg_format(SiteIdField, strconv.Itoa(*id)) +
 			msg_format(UptField, text)
 	} else {
@@ -111,7 +131,7 @@ func verifyIfMaxNbLinesSite(arr []int) string {
 	}
 }
 
-
+// verifyScApproval checks if the local site can enter the critical section and signals approval
 func verifyScApproval(tab Tab) {
 	var sndmsg string
 	if tab[*id].Type == MsgRequestSc {
@@ -131,6 +151,7 @@ func verifyScApproval(tab Tab) {
 	}
 }
 
+// saveCutJson records a vectorial clock under a given cut and action in a JSON file
 func saveCutJson(cutNumber string, vectorialClock []int, siteActionNumber string, filePath string) error {
 	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
@@ -153,7 +174,7 @@ func saveCutJson(cutNumber string, vectorialClock []int, siteActionNumber string
 		}
 	}
 
-	// json structur : {cutNumber: {siteActionNumber: vectorialClock}}
+	// json structure: {cutNumber: {siteActionNumber: vectorialClock}}
 	innerMap, ok := data[cutNumber].(map[string]interface{})
 	if !ok {
 		innerMap = make(map[string]interface{})
