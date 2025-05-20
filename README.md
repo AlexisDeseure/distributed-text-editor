@@ -59,10 +59,10 @@ A la réception de l'accès à la section critique, l'application modifie son fi
 Si l'application reçoit, du contrôleur, une ou plusieurs modifications du contenu de la donnée partagée, les modifications sont appliquées sur la copie locale du fichier partagé à partir de la dernière version à jour. De plus, l'UI qui affiche le texte à l'utilisateur est mise à jour en appliquant directement les modifications de la version reçu sur la version affichée (même si la version affichée ne correspond pas à la version locale sauvegardée, qui elle, correspond à la version sauvegardée localement par tous les sites).
 
 Voici un résumé de l'architecture d'une instance de l'application :
- 
+
 ![Schéma de la logique de l'application](doc/schema_application.png)
 
-D'autres messages peuvent aussi être envoyés/reçus par l'application :
+D'autres messages peuvent aussi être envoyés/reçus par l'application pour garantir les autres fonctionnalités (sauvegarde répartie datée, reprise de l'historique au lancement, fermeture d'une instance entraînant les autres):
 * Message de réception de l'indication d'une fermeture de l'application : si l'utilisateur ferme une des fenêtres ouvertes, il faut toutes les fermer pour éviter des soucis de communication. Ce message, une fois reçu, entraîne la fermeture de la fenêtre *Fyne*.
 * Message de réception de modification du texte local pour l'initialisation : lors de l'initialisation, si des sites avaient des fichiers sauvegardés différents, celui qui a le plus de lignes est retenu et son contenu est envoyé à tous les sites. A la réception de ce message, l'application du site doit modifier son texte affiché ainsi que celui sauvegardé localement pour garantir la synchronisation globale entre les sites.
 * Messsage d'envoi du nombre de lignes et du contenu : servent pour les mêmes raisons que le point précédent pour transmettre l'information au contrôleur
@@ -71,5 +71,7 @@ D'autres messages peuvent aussi être envoyés/reçus par l'application :
 
 ### Couche de contrôle
 
+La couche de contôle a pour objectif de gérer les communications entre les sites en implémentant l'algorithme de la file d'attente répartie adapté à une topologie en anneau. 
 
+![Schéma de la logique du contrôleur](doc/schema_controleur.png)
 
