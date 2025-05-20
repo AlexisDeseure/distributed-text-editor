@@ -225,9 +225,6 @@ func receive(textArea *widget.Entry) {
 
 		case MsgAppShallDie:
 
-			sndmsg := msg_format(TypeField, MsgAppDied)
-			fmt.Println(sndmsg)
-			os.Stdout.Sync()
 			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
 				fyne.CurrentApp().Driver().Quit()
 			}, true)
@@ -311,6 +308,7 @@ func initUI() (fyne.Window, *widget.Entry) {
 
 	// Set the window close intercept
 	myWindow.SetCloseIntercept(func() {
+		// message for the closing message propagation
 		sndmsg := msg_format(TypeField, MsgAppDied)
 		fmt.Println(sndmsg)
 		myWindow.Close()

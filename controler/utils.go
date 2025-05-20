@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -71,6 +72,14 @@ func CreateDefaultTab(n int) Tab {
 	return arr
 }
 
+func CreateTabInit(n int) []int {
+	arr := make([]int, n)
+	for i := range arr {
+		arr[i] = -1
+	}
+	return arr
+}
+
 func timestampComparison(a, b CompareElement) bool {
 	if a.Clock < b.Clock {
 		return true
@@ -79,6 +88,29 @@ func timestampComparison(a, b CompareElement) bool {
 	}
 	return false
 }
+
+func verifyIfMaxNbLinesSite(arr []int) string {
+	var id_max int = 0
+	var v_max int = 0
+	for id, v := range arr {
+		if v <= -1 {
+			return ""
+		}
+		if v > v_max { // the site with maximum nb lines is kept, if there is equality, the one with the minimum id is kept
+			v_max = v
+			id_max = id
+		}
+	}
+	if *id == id_max{
+		display_d("Sending the text from app because it has the maximum number of lines")
+		return msg_format(TypeField, MsgPropagateText) + 
+			msg_format(SiteIdField, strconv.Itoa(*id)) +
+			msg_format(UptField, text)
+	} else {
+		return ""
+	}
+}
+
 
 func verifyScApproval(tab Tab) {
 	var sndmsg string
@@ -100,7 +132,6 @@ func verifyScApproval(tab Tab) {
 }
 
 func saveCutJson(cutNumber string, vectorialClock []int, siteActionNumber string, filePath string) error {
-	display_d(cutNumber)
 	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("error opening/creating file: %w", err)

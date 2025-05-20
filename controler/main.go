@@ -17,24 +17,22 @@ const (
 	MsgRequestSc          string = "rqs" // request critical section
 	MsgReleaseSc          string = "rls" // release critical section
 	MsgReceiptSc          string = "rcs" // receipt of critical section
-	MsgCut                string = "cut" // save the vectorial clock value
-	MsgAppShallDie        string = "shd" // app shall die
-	MsgAcknowledgement    string = "ack" // tell controller n°0 that one controller is ready to compare its log size
-	MsgCompareSize        string = "cmp" // number of lines and id so that it can be compared with other sizes
-	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
-	MsgPropagateText      string = "prp" // send the associated text to the next controller
+	MsgCut                string = "cut" // give the vectorial clock value
+	MsgAppShallDie        string = "shd" // indicates that app shall die
+	MsgAcknowledgement    string = "ack" // tell the site's controler the number of lines of log file of sender id
+	MsgPropagateText      string = "prp" // give the correct initial text to the next controller
 
 	// message type to be receive from application
 	MsgAppRequest  string = "rqa" // request critical section
 	MsgAppRelease  string = "rla" // release critical section
-	MsgAppDied     string = "apd" // app died
-	MsgInitialSize string = "siz" // number of lines in the log file
-	MsgInitialText string = "txt" // Initial text when the app begins
+	MsgAppDied     string = "apd" // indicates that app died
+	MsgInitialSize string = "siz" // give the number of lines in the log file
+	MsgInitialText string = "txt" // give the initial local text of app when the app begins
 
 	// message type to be sent to application
 	MsgAppStartSc    string = "ssa" // start critical section
 	MsgAppUpdate     string = "upa" // update critical section
-	MsgReturnNewText string = "ret" // return the new common text content to the site
+	MsgReturnNewText string = "ret" // give the new initial common text content to the site
 )
 
 // message fields
@@ -67,13 +65,7 @@ var (
 	h  int  = 0
 )
 
-var (
-	size int    = 0
-	text string = ""
-	best bool   = false
-)
-
-var initializedSites int = 0
+var text string = ""
 
 var (
 	outputDir        *string = flag.String("o", "./output", "output directory")
@@ -103,6 +95,7 @@ func main() {
 	var currentAction int = 0
 
 	tab := CreateDefaultTab(*N)
+	tabinit := CreateTabInit(*N)
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -262,94 +255,78 @@ func main() {
 			}
 
 		case MsgInitialSize:
-
+			display_d("Initial size received")
 			msg := findval(rcvmsg, UptField, true)
-			size, err = strconv.Atoi(msg)
+			size, err := strconv.Atoi(msg)
 			if err != nil {
 				display_e("Error while converting string to int: " + err.Error())
 			}
+			tabinit[*id] = size
+
+			sndmsg = msg_format(TypeField, MsgAcknowledgement) + 
+				msg_format(SiteIdField, strconv.Itoa(*id)) +
+				msg_format(UptField, strconv.Itoa(size))
+			display_d("Acknowledgement message sent")
 
 		case MsgInitialText:
-
+			// This message is always received after MsgInitialSize due to FIFO channels. 
+			// Thus, verification is only performed here in cases where all sites have acknowledged 
+			// their number of lines and this site has the maximum. If all the MsgAcknowledgement 
+			// messages were received before the MsgInitialText message, the verification process 
+			// in the "case" would have always return an empty string, so verifying here is very important.
+			display_d("Initial text receive")
 			text = findval(rcvmsg, UptField, true)
-
-			// All controllers that are not controller n°0 should inform controller n°0 that they are ready
-			if *id != 0 {
-				sndmsg = msg_format(TypeField, MsgAcknowledgement) + msg_format(SiteIdDestField, strconv.Itoa(0))
-			}
+			sndmsg = verifyIfMaxNbLinesSite(tabinit) // verify if the site has the max and return the message to send 
+			// if it is correct else return an empty string
 
 		case MsgAcknowledgement:
 
-			// If the message is not for this site, forward it to the next one
-			if destidrcv != *id {
-				display_d("Forwarding acknowledgement message")
-				fmt.Println(rcvmsg)
-				continue
-			}
-
-			// This message can only be sent to controler n°0.
-			// This controler will then know when every other controler is ready to communicate
-			initializedSites++
-
-			// If every other site is initialized we can start comparing sizes
-			if initializedSites >= *N - 1 {
-				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size)+"|"+strconv.Itoa(*id))
-			}
-
-		case MsgCompareSize:
-
-			msg := findval(rcvmsg, UptField, true)
-			parts := strings.SplitN(msg, "|", 2)
-
-			rcvsize, err := strconv.Atoi(parts[0])
-			if err != nil {
-				display_e("Error while converting string to int")
-			}
-
-			if *id != 0 {
-				if rcvsize > size {
-					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, msg)
-				} else {
-					sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size)+"|"+strconv.Itoa(*id))
-				}
-			} else {
-				bestid, err := strconv.Atoi(parts[1])
+			if idrcv != *id {
+				
+				msg := findval(rcvmsg, UptField, true)
+				size, err := strconv.Atoi(msg)
 				if err != nil {
-					display_e("Error while converting string to int")
+					display_e("Error while converting string to int: " + err.Error())
 				}
-				sndmsg = msg_format(TypeField, MsgRequestPropagation) + msg_format(SiteIdDestField, strconv.Itoa(bestid))
-			}
 
-		case MsgRequestPropagation:
-
-			// If the message is not for this site, forward it to the next one
-			if destidrcv != *id {
-				display_d("Forwarding propagation request")
+				display_d("Message acknowledgement received from site " + 
+					strconv.Itoa(idrcv) + 
+					" with " + 
+					strconv.Itoa(size) + 
+					" lines")
+				// forward the message to the next site as id != idrcv
 				fmt.Println(rcvmsg)
-				continue
-			}
+				display_d("Forwarding acknowledgement message")
 
-			best = true
-			sndmsg = msg_format(TypeField, MsgPropagateText) + msg_format(UptField, text)
+				tabinit[idrcv] = size
+				sndmsg = verifyIfMaxNbLinesSite(tabinit) // verify if the site has the max and return the message to send 
+				// if it is correct else return an empty string
+
+			}
 
 		case MsgPropagateText:
 
-			if !best {
+			if idrcv != *id {
+				display_d("Initialization text received from site " + strconv.Itoa(idrcv))
+				// forward the message to the next site as id != idrcv
+				fmt.Println(rcvmsg)
+				display_d("Forwarding initial text message")
+
 				text = findval(rcvmsg, UptField, false)
-				sndmsg = msg_format(TypeField, MsgReturnNewText) + msg_format(UptField, text)
-				fmt.Println(sndmsg)
-				sndmsg = msg_format(TypeField, MsgPropagateText) + msg_format(UptField, text)
+
+				sndmsg = msg_format(TypeField, MsgReturnNewText) + 
+					msg_format(UptField, text)
+				display_d("Sending initial text to app")
 			}
 
 		case MsgAppDied:
 
 			sndmsg = msg_format(TypeField, MsgAppShallDie)
-			fmt.Println(sndmsg)
+			display_d("App died : sending message to other sites")
 
 		case MsgAppShallDie:
-
-			sndmsg = msg_format(TypeField, MsgAppShallDie)
-			fmt.Println(sndmsg)
+			display_d("App died message received : forwarding it and closing controler")
+			fmt.Println(rcvmsg)
 			os.Stdout.Sync()
 			return
 
