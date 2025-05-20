@@ -145,8 +145,8 @@ func main() {
 
 		nbcut := findval(rcvmsg, cutNumber, false)
 
-		// if the message is not for this site, ignore it
-		if s_destid == "" || destidrcv == *id {
+		// if the message is a Receipt and is not for this site, ignore it
+		if rcvtyp != MsgReceiptSc || destidrcv == *id {
 
 			// update the clock of the site
 			h = resetClock(h, hrcv)
