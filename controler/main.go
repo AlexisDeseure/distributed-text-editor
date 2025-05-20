@@ -10,7 +10,9 @@ import (
 	"strings"
 )
 
+// message types
 const (
+
 	// message type to be sent/received to/from other sites
 	MsgRequestSc          string = "rqs" // request critical section
 	MsgReleaseSc          string = "rls" // release critical section
@@ -21,18 +23,21 @@ const (
 	MsgCompareSize        string = "cmp" // number of lines and id  so that it can be compared with other sizes
 	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
 	MsgPropagateText      string = "prp" // send the associated text to the next controller
+
 	// message type to be receive from application
 	MsgAppRequest  string = "rqa" // request critical section
 	MsgAppRelease  string = "rla" // release critical section
 	MsgAppDied     string = "apd" // app died
 	MsgInitialSize string = "siz" // number of lines in the log file
 	MsgInitialText string = "txt" // Initial text when the app begins
+
 	// message type to be sent to application
 	MsgAppStartSc    string = "ssa" // start critical section
 	MsgAppUpdate     string = "upa" // update critical section
 	MsgReturnNewText string = "ret" // return the new common text content to the site
 )
 
+// message fields
 const (
 	TypeField               string = "typ" // type of message
 	UptField                string = "upt" // content of update for application
@@ -81,10 +86,12 @@ func main() {
 		display_e("Invalid site id")
 		return
 	}
+
 	if *N < 1 {
 		display_e("Invalid number of sites")
 		return
 	}
+
 	var sndmsg string
 	var rcvtyp string
 	var rcvmsg string
@@ -97,10 +104,13 @@ func main() {
 
 	tab := CreateDefaultTab(*N)
 	reader := bufio.NewReader(os.Stdin)
+
 	for {
+
 		// transform the vectorial clock into a json at the beginning of the loop
 		// to avoid nill/undefined jsonVc value
 		jsonVc, err := json.Marshal(vectorialClock)
+
 		if err != nil {
 			display_e("JSON encoding error: " + err.Error())
 		}
@@ -110,6 +120,7 @@ func main() {
 			display_e("Error reading message : " + err.Error())
 			continue
 		}
+
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
 
 		rcvtyp = findval(rcvmsg, TypeField, true)
@@ -164,7 +175,9 @@ func main() {
 		sndmsg = ""
 
 		switch rcvtyp {
+
 		case MsgAppRequest:
+
 			tab[*id].Type = MsgRequestSc
 			tab[*id].Clock = h
 			display_d("Request message received from application")
@@ -176,6 +189,7 @@ func main() {
 			display_d("Requesting critical section")
 
 		case MsgAppRelease:
+
 			tab[*id].Type = MsgReleaseSc
 			tab[*id].Clock = h
 			msg := findval(rcvmsg, UptField, true)
@@ -189,6 +203,7 @@ func main() {
 			display_d("Releasing critical section")
 
 		case MsgRequestSc:
+
 			if idrcv != *id {
 				tab[idrcv].Type = MsgRequestSc
 				tab[idrcv].Clock = hrcv
@@ -210,6 +225,7 @@ func main() {
 			}
 
 		case MsgReleaseSc:
+
 			if idrcv != *id {
 				tab[idrcv].Type = MsgReleaseSc
 				tab[idrcv].Clock = hrcv
@@ -228,6 +244,7 @@ func main() {
 			}
 
 		case MsgReceiptSc:
+
 			if idrcv != *id {
 				if destidrcv == *id {
 					if tab[idrcv].Type != MsgRequestSc {
@@ -275,7 +292,7 @@ func main() {
 			initializedSites++
 
 			// If every other site is initialized we can start comparing sizes
-			if initializedSites >= *N-1 {
+			if initializedSites >= *N - 1 {
 				sndmsg = msg_format(TypeField, MsgCompareSize) + msg_format(UptField, strconv.Itoa(size)+"|"+strconv.Itoa(*id))
 			}
 
@@ -325,16 +342,19 @@ func main() {
 			}
 
 		case MsgAppDied:
+
 			sndmsg = msg_format(TypeField, MsgAppShallDie)
 			fmt.Println(sndmsg)
 
 		case MsgAppShallDie:
+
 			sndmsg = msg_format(TypeField, MsgAppShallDie)
 			fmt.Println(sndmsg)
 			os.Stdout.Sync()
 			return
 
 		case MsgCut:
+
 			nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
 			if err != nil {
 				display_e("Error : " + err.Error())

@@ -178,7 +178,9 @@ func receive(textArea *widget.Entry) {
 	var rcvuptdiffs []utils.Diff
 
 	reader := bufio.NewReader(os.Stdin)
+
 	for {
+
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
 			// display_e("Error reading message : " + err.Error())
@@ -194,11 +196,14 @@ func receive(textArea *widget.Entry) {
 		}
 
 		switch rcvtyp {
+
 		case MsgAppStartSc: // Receive start critical section message
+
 			sectionAccess = true
 			display_d("Critical section access granted")
 
 		case MsgAppUpdate: // Receive update from remote version
+
 			rcvupt := findval(rcvmsg, UptField, true)
 			err := json.Unmarshal([]byte(rcvupt), &rcvuptdiffs)
 			if err != nil {
@@ -219,6 +224,7 @@ func receive(textArea *widget.Entry) {
 			display_d("Critical section updated")
 
 		case MsgAppShallDie:
+
 			sndmsg := msg_format(TypeField, MsgAppDied)
 			fmt.Println(sndmsg)
 			os.Stdout.Sync()
