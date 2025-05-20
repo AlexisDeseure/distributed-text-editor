@@ -61,19 +61,19 @@ var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
 var mutex = &sync.Mutex{}
 
 var (
-	localSaveFilePath string
-	localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir)
+	localSaveFilePath string //path to the local save of the shared file in a log format
+	localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir) //path to the cuts file
 )
 
 var (
-	lastText               string
-	sectionAccess          bool = false
-	sectionAccessRequested bool = false
+	lastText               string //contains the last local text sync with the shared version
+	sectionAccess          bool = false // true if the app have access to critical section
+	sectionAccessRequested bool = false // true if app has request to access the critical section
 )
 
 var (
-	cut  bool = false
-	save bool = false
+	cut  bool = false //true if the cut button has been pressed
+	save bool = false //true if the save button has been pressed
 )
 
 func main() {
@@ -90,8 +90,10 @@ func main() {
 	myWindow, textArea := initUI()
 	lastText = textArea.Text
 
+	// Launch the initialization process to be sure each site has the same initial local save 
 	unifyVersions(utils.LineCountSince(0, localSaveFilePath))
 
+	// Start send/receive routines
 	go send(textArea)
 	go receive(textArea)
 
@@ -101,8 +103,9 @@ func main() {
 
 // This function starts a cycle that gathers the most up-to-date version of the common text and propagates it to each site
 func unifyVersions(size int) {
-	sndmsg := msg_format(TypeField, MsgInitialSize) + msg_format(UptField, strconv.Itoa(size))
-	fmt.Println(sndmsg)
+	sndmsg := msg_format(TypeField, MsgInitialSize) + 
+		msg_format(UptField, strconv.Itoa(size))
+	fmt.Println(sndmsg) // send the lines count
 
 	content, err := os.ReadFile(localSaveFilePath)
 	if err != nil {
@@ -110,10 +113,10 @@ func unifyVersions(size int) {
 		return
 	}
 
-	// \n cannot be sent to the standard output without being misinterpreted
+	// "\n" cannot be sent to the standard output without being misinterpreted
 	formatted := strings.ReplaceAll(string(content), "\n", "↩")
 	sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(formatted))
-	fmt.Println(sndmsg)
+	fmt.Println(sndmsg)// send the content
 }
 
 // A goroutine to manage local text saving and and to send modifications to other sites via the controller
@@ -122,31 +125,34 @@ func send(textArea *widget.Entry) {
 
 	for {
 
-		if !*debug {
+		if !*debug { // Saving interval if we are not in debug mode
 			time.Sleep(autoSaveInterval)
 		}
 
 		sndmsg = ""
+
 		mutex.Lock()
-		cur := textArea.Text
+		cur := textArea.Text // current text displayed on the Fyne UI
 
 		if cut {
-
+			// if the cut button has been pressed we process it and communicate with controller
 			cut = false
 			nextCutNumber, _ := GetNextCutNumber(localCutFilePath)
 			sndmsg = msg_format(TypeField, MsgCut) +
 				msg_format(cutNumber, nextCutNumber) +
 				msg_format(NumberVirtualClockSaved, strconv.Itoa(0))
 
-		} else if sectionAccess && (!*debug || save) {
-
+		} else if sectionAccess && (!*debug || save) { 
+			// if the controller has granted access to the critical section and we can save
 			save = false
-			// Check if the controller has granted access to the critical section
+			
+			// local save can be updated with user modifications
 			newTextDiffs := utils.ComputeDiffs(lastText, cur)
 			newText := utils.ApplyDiffs(lastText, newTextDiffs)
 			utils.SaveModifs(lastText, newText, localSaveFilePath)
 			lastText = newText
 
+			// app can release critical section access with its modifications
 			sndmsgBytes, err := json.Marshal(newTextDiffs)
 			if err != nil {
 				display_e("Error serializing diffs")
@@ -154,12 +160,15 @@ func send(textArea *widget.Entry) {
 			}
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
+			
+			//booleans reseted to false
 			sectionAccess = false
 			sectionAccessRequested = false
 			display_d("Critical section released")
 
-			// Request access to the critical section if the text has changed
+			
 		} else if (cur != lastText) && (!sectionAccessRequested) && (!*debug || save) {
+			// Request access to the critical section if the text has changed
 			sectionAccessRequested = true
 			sndmsg = msg_format(TypeField, MsgAppRequest)
 		}
@@ -186,10 +195,12 @@ func receive(textArea *widget.Entry) {
 			// display_e("Error reading message : " + err.Error())
 			continue
 		}
+		// delete last "\n"
 		rcvmsg = strings.TrimSuffix(rcvmsgRaw, "\n")
 
 		mutex.Lock()
-		cur := textArea.Text
+
+		cur := textArea.Text // current text displayed on the Fyne UI
 		rcvtyp = findval(rcvmsg, TypeField, true)
 		if rcvtyp == "" {
 			continue
@@ -211,11 +222,15 @@ func receive(textArea *widget.Entry) {
 				continue
 			}
 
+			// Apply the modifs on the local copy of the shared file without considering local unsaved user modifications
 			oldTextUpdated := utils.ApplyDiffs(lastText, rcvuptdiffs) // Apply the diffs to the last remote text
 			utils.SaveModifs(lastText, oldTextUpdated, localSaveFilePath)
+			// Apply the modifs receive on the UI considering the local unsaved user modifications
 			newText := utils.ApplyDiffs(cur, rcvuptdiffs) // Apply the diffs to the current text
+			// Update the shared file copy without unsaved local user modifs
 			lastText = oldTextUpdated
 
+			// Refresh UI
 			fyne.Do(func() {
 				textArea.SetText(newText)
 				textArea.Refresh()
@@ -223,26 +238,27 @@ func receive(textArea *widget.Entry) {
 
 			display_d("Critical section updated")
 
-		case MsgAppShallDie:
+		case MsgAppShallDie: // Receive a death message from controller so the app have to die 
 
 			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
 				fyne.CurrentApp().Driver().Quit()
 			}, true)
 
-		case MsgReturnNewText:
+		case MsgReturnNewText: // Receive a new text message
 
 			text := findval(rcvmsg, UptField, false)
 			original := strings.ReplaceAll(text, "↩", "\n")
+			// Erase the local save with the one received
 			err := os.WriteFile(localSaveFilePath, []byte(original), 0o644)
 			if err != nil {
 				display_e("Error while writing into log file: " + err.Error())
 			}
 
+			// Get the new content and replace the loacal save var + refresh UI
 			content, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
 			if err != nil {
 				display_e("Error while reading log file: " + err.Error())
 			}
-
 			fyne.Do(func() {
 				textArea.SetText(content)
 				textArea.Refresh()
@@ -254,6 +270,7 @@ func receive(textArea *widget.Entry) {
 	}
 }
 
+// A function to initialize the UI
 func initUI() (fyne.Window, *widget.Entry) {
 	var content fyne.CanvasObject
 

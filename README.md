@@ -89,8 +89,6 @@ D'autres messages peuvent aussi être envoyés/reçus par le contrôleur pour ga
 * Messages liés à l'initialisation du système de mise en commun de la donnée partagée qui permettent de garantir que tous les sites possèdent la même copie locale de la donnée partagée (fichier `.log`) au début peut importe le nombre de sites qu'il y avait à l'exécution précédente et le nombre de sites qu'il y a à l'exécution actuelle :
     * `MsgReturnNewText` : message envoyé à l'application et contenant le nouveau texte
     * `MsgInitialSize` : message reçu de l'application contenant la nombre de lignes de son texte local 
-    * `MsgInitialText` : message reçu de l'application contenant le texte local de l'application qui est ensuite sauvegardé localment dans le contrôleur
-    * `MsgAcknowledgement` : message envoyé/reçu d'un contrôleur pour informer qu'il est prêt à comparer la taille de son fichier local
-    * `MsgCompareSize` : message envoyé/reçu par un contrôleur qui contient le nombre de lignes de l'envoyeur à comparer avec celui du contrôleur qui le réceptionne
-    * `MsgRequestPropagation` : message envoyé/reçu d'un controleur pour demander au site avec l'application qui a une sauvegarde locale avec le plus de ligne d'envoyer le texte de son application à tous les sites
-    * `MsgPropagateText` : message envoyé/reçu d'un controleur pour envoyer le texte de son application à tous les autres
+    * `MsgInitialText` : message reçu de l'application contenant le texte local de l'application qui est ensuite sauvegardé localement dans le contrôleur
+    * `MsgAcknowledgement` : message envoyé/reçu d'un contrôleur pour indiquer le nombre de ligne du fichier local de l'application aux autres controleurs
+    * `MsgPropagateText` : message envoyé/reçu d'un controleur pour envoyer le texte de son application à tous les autres (celui qui a le fichier de `.log\ localement avec le plus de lignes)
