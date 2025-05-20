@@ -38,7 +38,7 @@ Pour cela, il s'assure de nommer correctement chaque élément d'un site `i` (at
 
 Ce script permet aussi de créer les fichiers temporaires FIFO qui permettent la liaison des entrées/sorties ainsi qu'un *trap* pour correctement fermer tous les processus lancés par le programme en cas de `CTRL+C`.
 
-Enfin ce script permet de supprimer les anciens fichiers de sorties si l'option est activé et d'activer le mode debug sur l'ensemble des sites si l'option est activée.
+Enfin, ce script permet de supprimer les anciens fichiers de sorties si l'option est activée et d'activer le mode debug sur l'ensemble des sites si l'option est activée.
 
 En résumé, le schéma ci-dessous permet de représenter l'architecture globale du réseau et de notre projet dans le cas d'un anneau de 4 sites :
 
@@ -63,9 +63,9 @@ Voici un résumé de l'architecture décrite ci-dessus d'une instance de l'appli
 ![Schéma de la logique de l'application](doc/schema_application.png)
 
 D'autres messages peuvent aussi être envoyés/reçus par l'application pour garantir les autres fonctionnalités (sauvegarde répartie datée, reprise de l'historique au lancement, fermeture d'une instance entraînant les autres):
-* Message de réception de l'indication d'une fermeture de l'application (`MsgAppShallDie`): si l'utilisateur ferme une des fenêtres ouvertes, il faut toutes les fermer pour éviter des soucis de communication. Ce message, une fois reçu, entraîne la fermeture de la fenêtre *Fyne*. De même, l'application qui gère la fenêtre qui s'est fermée envoie un message à son contrôleur pour êtr transmis à tous les sites (`MsgAppDied`).
+* Message de réception de l'indication d'une fermeture de l'application (`MsgAppShallDie`): si l'utilisateur ferme une des fenêtres ouvertes, il faut toutes les fermer pour éviter des soucis de communication. Ce message, une fois reçu, entraîne la fermeture de la fenêtre *Fyne*. De même, l'application qui gère la fenêtre qui s'est fermée envoie un message à son contrôleur pour être transmis à tous les sites (`MsgAppDied`).
 * Message de réception de modification du texte local pour l'initialisation (`MsgReturnNewText`): lors de l'initialisation, si des sites avaient des fichiers sauvegardés différents, celui qui a le plus de lignes est retenu et son contenu est envoyé à tous les sites. A la réception de ce message, l'application du site doit modifier son texte affiché ainsi que celui sauvegardé localement pour garantir la synchronisation globale entre les sites.
-* Messsage d'envoi du nombre de lignes et du contenu (`MsgInitialSize` et `MsgInitialText`) : servent pour les mêmes raisons que le point précédent pour transmettre l'information au contrôleur
+* Message d'envoi du nombre de lignes et du contenu (`MsgInitialSize` et `MsgInitialText`) : servent pour les mêmes raisons que le point précédent pour transmettre l'information au contrôleur
 * Message d'envoi d'une demande de coupe au contrôleur pour initier la sauvegarde répartie datée (`MsgCut`)
 
 
