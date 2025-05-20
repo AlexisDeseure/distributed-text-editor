@@ -20,7 +20,7 @@ const (
 	MsgCut                string = "cut" // save the vectorial clock value
 	MsgAppShallDie        string = "shd" // app shall die
 	MsgAcknowledgement    string = "ack" // tell controller n°0 that one controller is ready to compare its log size
-	MsgCompareSize        string = "cmp" // number of lines and id  so that it can be compared with other sizes
+	MsgCompareSize        string = "cmp" // number of lines and id so that it can be compared with other sizes
 	MsgRequestPropagation string = "rqp" // request controller with the largest log file to send it to the others
 	MsgPropagateText      string = "prp" // send the associated text to the next controller
 
