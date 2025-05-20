@@ -71,7 +71,7 @@ D'autres messages peuvent aussi être envoyés/reçus par l'application pour gar
 
 ### Couche de contrôle
 
-La couche de contôle a pour objectif de gérer les communications entre les sites en implémentant l'algorithme de la file d'attente répartie adapté à une topologie en anneau.
+La couche de contrôle a pour objectif de gérer les communications entre les sites en implémentant l'algorithme de la file d'attente répartie adapté à une topologie en anneau.
 
 Pour cela, chaque site envoie son id (unique) à son successeur (anneau unidirectionnel à canaux FIFO) et traite puis transmet les messages qu'il n'a pas lui-même envoyé. Il arrête de transmettre les messages qu'il a lui même envoyé au moment où il les reçoit.
 
@@ -85,10 +85,10 @@ Voici un résumé de l'architecture décrite ci-dessus d'une instance d'un contr
 
 D'autres messages peuvent aussi être envoyés/reçus par le contrôleur pour garantir les autres fonctionnalités (sauvegarde répartie datée, reprise de l'historique au lancement, fermeture d'une instance entraînant les autres):
 * Message d'une demande de coupe reçu par l'application et transmise à tous les sites pour initier la sauvegarde répartie datée (`MsgCut`)
-* Message de l'indication d'une fermeture de l'application : si l'utilisateur ferme une des fenêtres ouvertes, il faut toutes les fermer pour éviter des soucis de communication. Après réception d'un message par l'application (`MsgAppDied`), le controleur doit transmettre un message à toutes les autres applications via leurs controleurs respectifs (`MsgAppShallDie`).
-* Messages liés à l'initialisation du système de mise en commun de la donnée partagée qui permettent de garantir que tous les sites possèdent la même copie locale de la donnée partagée (fichier `.log`) au début peut importe le nombre de sites qu'il y avait à l'exécution précédente et le nombre de sites qu'il y a à l'exécution actuelle :
+* Message de l'indication d'une fermeture de l'application : si l'utilisateur ferme une des fenêtres ouvertes, il faut toutes les fermer pour éviter des soucis de communication. Après réception d'un message par l'application (`MsgAppDied`), le contrôleur doit transmettre un message à toutes les autres applications via leurs controleurs respectifs (`MsgAppShallDie`).
+* Messages liés à l'initialisation du système de mise en commun de la donnée partagée qui permettent de garantir que tous les sites possèdent la même copie locale de la donnée partagée (fichier `.log`) au début peu importe le nombre de sites qu'il y avait à l'exécution précédente et le nombre de sites qu'il y a à l'exécution actuelle :
     * `MsgReturnNewText` : message envoyé à l'application et contenant le nouveau texte
-    * `MsgInitialSize` : message reçu de l'application contenant la nombre de lignes de son texte local 
+    * `MsgInitialSize` : message reçu de l'application contenant le nombre de lignes de son texte local 
     * `MsgInitialText` : message reçu de l'application contenant le texte local de l'application qui est ensuite sauvegardé localement dans le contrôleur
-    * `MsgAcknowledgement` : message envoyé/reçu d'un contrôleur pour indiquer le nombre de ligne du fichier local de l'application aux autres controleurs
+    * `MsgAcknowledgement` : message envoyé/reçu d'un contrôleur pour indiquer le nombre de ligne du fichier local de l'application aux autres contrôleurs
     * `MsgPropagateText` : message envoyé/reçu d'un controleur pour envoyer le texte de son application à tous les autres (celui qui a le fichier de `.log\ localement avec le plus de lignes)
