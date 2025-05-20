@@ -24,6 +24,8 @@ Pour exécuter le projet avec des paramètres spécifiques, il faut exécuter le
 ```
  avec `<nombre_d_instances>` le nombre d'instances de l'application à exécuter, `<reinitialiser_anciennes_sauvegardes>` devant prendre la valeur `1` si l'on souhaite réinitialiser les anciennes sauvegardes (n'importe quelle autre valeur ou rien sinon) et `<debug_mode>` devant prendre la valeur `1` si l'on souhaite activer le mode débogage : sauvegarde manuelle avec un bouton (n'importe quelle autre valeur ou rien sinon).
 
+ Si le fichier run.sh n'est pas reconnu, il peut être nécessaire d'exécuter 'dos2unix run.sh' pour le formatter correctement.
+
 ## Architecture
 
 L'architecture de l'application est divisée en plusieurs couches :
@@ -91,4 +93,4 @@ D'autres messages peuvent aussi être envoyés/reçus par le contrôleur pour ga
     * `MsgInitialSize` : message reçu de l'application contenant le nombre de lignes de son texte local 
     * `MsgInitialText` : message reçu de l'application contenant le texte local de l'application qui est ensuite sauvegardé localement dans le contrôleur
     * `MsgAcknowledgement` : message envoyé/reçu d'un contrôleur pour indiquer le nombre de ligne du fichier local de l'application aux autres contrôleurs
-    * `MsgPropagateText` : message envoyé/reçu d'un controleur pour envoyer le texte de son application à tous les autres (celui qui a le fichier de `.log\ localement avec le plus de lignes)
+    * `MsgPropagateText` : message envoyé/reçu d'un controleur pour envoyer le texte de son application à tous les autres (celui qui a le fichier de `.log` localement avec le plus de lignes)
