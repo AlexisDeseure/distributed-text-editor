@@ -1,6 +1,6 @@
-# *Project SR05 Groupe 12* - Application répartie pour un système de traitement textuel décentralisé
+# Application répartie pour un système de traitement textuel décentralisé
 
-Projet réalisé par : 
+Projet SR05 réalisé par (Groupe 12) : 
 * Alexis Deseure--Charron
 * Antoine Lequeux
 * Jessica Devulder
