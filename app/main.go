@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image/color"
 	"os"
 	"strconv"
 	"strings"
@@ -15,7 +16,9 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -61,14 +64,14 @@ var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
 var mutex = &sync.Mutex{}
 
 var (
-	localSaveFilePath string //path to the local save of the shared file in a log format
+	localSaveFilePath string                                          //path to the local save of the shared file in a log format
 	localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir) //path to the cuts file
 )
 
 var (
-	lastText               string //contains the last local text sync with the shared version
-	sectionAccess          bool = false // true if the app have access to critical section
-	sectionAccessRequested bool = false // true if app has request to access the critical section
+	lastText               string         //contains the last local text sync with the shared version
+	sectionAccess          bool   = false // true if the app have access to critical section
+	sectionAccessRequested bool   = false // true if app has request to access the critical section
 )
 
 var (
@@ -90,7 +93,7 @@ func main() {
 	myWindow, textArea := initUI()
 	lastText = textArea.Text
 
-	// Launch the initialization process to be sure each site has the same initial local save 
+	// Launch the initialization process to be sure each site has the same initial local save
 	unifyVersions(utils.LineCountSince(0, localSaveFilePath))
 
 	// Start send/receive routines
@@ -103,7 +106,7 @@ func main() {
 
 // This function starts a cycle that gathers the most up-to-date version of the common text and propagates it to each site
 func unifyVersions(size int) {
-	sndmsg := msg_format(TypeField, MsgInitialSize) + 
+	sndmsg := msg_format(TypeField, MsgInitialSize) +
 		msg_format(UptField, strconv.Itoa(size))
 	fmt.Println(sndmsg) // send the lines count
 
@@ -116,7 +119,7 @@ func unifyVersions(size int) {
 	// "\n" cannot be sent to the standard output without being misinterpreted
 	formatted := strings.ReplaceAll(string(content), "\n", "↩")
 	sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(formatted))
-	fmt.Println(sndmsg)// send the content
+	fmt.Println(sndmsg) // send the content
 }
 
 // A goroutine to manage local text saving and and to send modifications to other sites via the controller
@@ -142,10 +145,10 @@ func send(textArea *widget.Entry) {
 				msg_format(cutNumber, nextCutNumber) +
 				msg_format(NumberVirtualClockSaved, strconv.Itoa(0))
 
-		} else if sectionAccess && (!*debug || save) { 
+		} else if sectionAccess && (!*debug || save) {
 			// if the controller has granted access to the critical section and we can save
 			save = false
-			
+
 			// local save can be updated with user modifications
 			newTextDiffs := utils.ComputeDiffs(lastText, cur)
 			newText := utils.ApplyDiffs(lastText, newTextDiffs)
@@ -160,13 +163,12 @@ func send(textArea *widget.Entry) {
 			}
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
-			
+
 			//booleans reseted to false
 			sectionAccess = false
 			sectionAccessRequested = false
 			display_d("Critical section released")
 
-			
 		} else if (cur != lastText) && (!sectionAccessRequested) && (!*debug || save) {
 			// Request access to the critical section if the text has changed
 			sectionAccessRequested = true
@@ -238,7 +240,7 @@ func receive(textArea *widget.Entry) {
 
 			display_d("Critical section updated")
 
-		case MsgAppShallDie: // Receive a death message from controller so the app have to die 
+		case MsgAppShallDie: // Receive a death message from controller so the app have to die
 
 			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
 				fyne.CurrentApp().Driver().Quit()
@@ -272,64 +274,102 @@ func receive(textArea *widget.Entry) {
 
 // A function to initialize the UI
 func initUI() (fyne.Window, *widget.Entry) {
-	var content fyne.CanvasObject
+    var content fyne.CanvasObject
 
-	// Create app
-	myApp := app.New()
+    // Create the app with forced light theme
+    myApp := app.New()
+    myApp.Settings().SetTheme(&CustomTheme{})
 
-	// Create a window
-	myWindow := myApp.NewWindow("Distributed Editor n" + fmt.Sprint(*id))
-	myWindow.Resize(fyne.NewSize(800, 600))
+    // Create the window
+    myWindow := myApp.NewWindow("Distributed Editor n" + fmt.Sprint(*id))
+    myWindow.Resize(fyne.NewSize(800, 600))
 
-	// Define the text area
-	textArea := widget.NewMultiLineEntry()
-	textArea.SetPlaceHolder("Write something...")
-	textArea.Wrapping = fyne.TextWrapWord
+    // Create the text area
+    textArea := widget.NewMultiLineEntry()
+    textArea.SetPlaceHolder("Write something...")
+    textArea.Wrapping = fyne.TextWrapWord
 
-	// Load the saved text
-	text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
-	if err != nil {
-		s_err := fmt.Sprintf("Error loading text from file: %v", err)
-		display_e(s_err)
+    // Create a white background behind the text area
+    whiteBackground := canvas.NewRectangle(color.White)
+    whiteBackground.Resize(fyne.NewSize(800, 600)) // ensure it covers
+
+    // Stack the white background and the text area
+    textContainer := container.NewStack(whiteBackground, textArea)
+
+    // Load the saved text
+    text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
+    if err != nil {
+        s_err := fmt.Sprintf("Error loading text from file: %v", err)
+        display_e(s_err)
+    }
+    textArea.SetText(text)
+
+    // Scrollable area
+    scrollable := container.NewScroll(textContainer)
+    scrollable.SetMinSize(fyne.NewSize(600, 400))
+
+    // "Cut" button
+    cutBtn := widget.NewButton("Cut", func() {
+        mutex.Lock()
+        defer mutex.Unlock()
+        cut = true
+    })
+
+    // Bottom of window depending on debug mode
+    if *debug {
+        saveBtn := widget.NewButton("Save", func() {
+            mutex.Lock()
+            defer mutex.Unlock()
+            save = true
+        })
+        bottomButtons := container.NewHBox(saveBtn, cutBtn)
+        content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
+    } else {
+        bottomButtons := container.NewHBox(cutBtn)
+        content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
+    }
+
+    // Set the content
+    myWindow.SetContent(content)
+
+    // Capture window close
+    myWindow.SetCloseIntercept(func() {
+        sndmsg := msg_format(TypeField, MsgAppDied)
+        fmt.Println(sndmsg)
+        myWindow.Close()
+    })
+
+    return myWindow, textArea
+}
+
+type CustomTheme struct{}
+
+func (m *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	switch name {
+	case theme.ColorNameBackground, theme.ColorNameInputBackground:
+		return color.White
+	case theme.ColorNameButton, theme.ColorNameDisabledButton:
+		return color.White
+	case theme.ColorNameForeground, theme.ColorNamePrimary:
+		return color.Black
+	default:
+		return theme.DefaultTheme().Color(name, variant)
 	}
-	textArea.SetText(text)
+}
 
-	// Define a scrollable area containing the text area
-	scrollable := container.NewScroll(textArea)
-	scrollable.SetMinSize(fyne.NewSize(600, 400))
+func (m *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return theme.DefaultTheme().Font(style)
+}
 
-	// button to create a cut and save vectorial clock
-	cutBtn := widget.NewButton("Cut", func() {
-		// triggers the saving of vector clocks
-		mutex.Lock()
-		defer mutex.Unlock()
-		cut = true
-	})
+func (m *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return theme.DefaultTheme().Icon(name)
+}
 
-	// Set the window content
-	if *debug {
-		saveBtn := widget.NewButton("Save", func() {
-			mutex.Lock()
-			defer mutex.Unlock()
-			save = true
-		})
-		bottomButtons := container.NewHBox(saveBtn, cutBtn)
-		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
-	} else {
-		bottomButtons := container.NewHBox(cutBtn)
-		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
-
+func (m *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
+	switch name {
+	case theme.SizeNameText:
+		return 24 // Bigger font size
+	default:
+		return theme.DefaultTheme().Size(name)
 	}
-
-	myWindow.SetContent(content)
-
-	// Set the window close intercept
-	myWindow.SetCloseIntercept(func() {
-		// message for the closing message propagation
-		sndmsg := msg_format(TypeField, MsgAppDied)
-		fmt.Println(sndmsg)
-		myWindow.Close()
-	})
-
-	return myWindow, textArea
 }
