@@ -4,4 +4,5 @@ use (
 	./app
 	./controler
 	./study
+	./test_graph
 )
