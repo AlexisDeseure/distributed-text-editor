@@ -43,11 +43,18 @@ func sendPeriodic(id string, conn *net.UDPConn, targetAddr *net.UDPAddr) {
 
 		// Print locally for debugging
 		mutex.Lock()
-		logger.Printf("[%s] LOCAL: %s (sent to %d sites)\n", id, message, sentCount)
+		logger.Printf("[%s] LOCAL: %s (sent to %d site%s)\n", id, message, sentCount, pluralize(sentCount))
 		mutex.Unlock()
 
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func pluralize(sentCount int) string {
+	if sentCount < 2 {
+		return ""
+	}
+	return "s"
 }
 
 // Handle a single incoming message
