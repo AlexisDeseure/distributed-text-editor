@@ -11,12 +11,15 @@ import (
 	"sync"
 	"time"
 )
+const Infinity string =  strconv.FormatFloat(math.Inf(1), 'f', -1, 64)
 
 type DiffusionStatus struct {
-	id           string
+	id          string
 	nbNeighbors int
-	parent       string
+	parent      string
+	elected     string = Infinity // This will be set to the elected site ID if an election is held
 }
+
 
 var mutex = &sync.Mutex{}
 var connectedSites = make(map[string]*net.UDPAddr)
@@ -35,6 +38,7 @@ const (
 	MsgAccessRequest string = "maq"
 	MsgAccessGranted string = "mag"
 	DiffusionMessage string = "dif"
+	ElectionMessage  string = "ele"
 	OtherMsgPrefix   string = "oth"
 	BlueMsg          string = "blu"
 	RedMsg           string = "red"
@@ -45,6 +49,7 @@ const (
 	SenderId       string = "sid"
 	DiffusionType  string = "dit"
 	ColorDiffusion string = "clr"
+	ElectedSite    string = "elec"
 )
 
 // msg_format constructs a key-value string using predefined separators
@@ -96,16 +101,16 @@ func sendPeriodic(id string, conn *net.UDPConn) {
 			diffusionId := fmt.Sprintf("%s:%s", site_id_from_others, content)
 
 			diffusionStatus := &DiffusionStatus{
-				id:           site_id_from_others,
+				id:          site_id_from_others,
 				nbNeighbors: len(connectedSites),
-				parent:       site_id_from_others,
+				parent:      site_id_from_others,
 			}
 
 			DiffusionStatusMap[diffusionId] = diffusionStatus
 
 			sndmsg := msg_format(TypeField, DiffusionMessage) +
 				msg_format(DiffusionType, OtherMsgPrefix) +
-				msg_format(SenderId, site_id_from_others) + 
+				msg_format(SenderId, site_id_from_others) +
 				msg_format(ContentField, diffusionId) +
 				msg_format(ColorDiffusion, BlueMsg)
 
@@ -157,24 +162,34 @@ func processMessage(id, msg string, admittedCh chan<- bool, logger *log.Logger, 
 			connectedSites[siteKey] = senderAddr
 			logger.Printf("[%s] REGISTERED: site at %s\n", id, siteKey)
 
-		} else {
+		} else if(DiffusionStatusMap["election"] == nil || DiffusionStatusMap["election"].parent == "") {
 			// Use a wave diffusion algorithm to handle admission requests and inform existing sites
 			// It corresponds to the initiator : start of the diffusion
-			diffusionId := fmt.Sprintf("%s:%s->%s", MsgAccessRequest, senderAddr.String(), site_id_from_others)
+
+			// diffusionId := fmt.Sprintf("%s:%s->%s", MsgAccessRequest, senderAddr.String(), site_id_from_others)
+			fmt.Sprintf("%s start an election", id)
+
+			// diffusionStatus := &DiffusionStatus{
+			// 	id:          senderAddr.String(),
+			// 	nbNeighbors: len(connectedSites),
+			// 	parent:      site_id_from_others,
+			// }
 
 			diffusionStatus := &DiffusionStatus{
-				id:           senderAddr.String(),
+				id:          id, // verifier
 				nbNeighbors: len(connectedSites),
-				parent:       site_id_from_others,
+				parent:      id,
+				elected:     id,
 			}
 
-			DiffusionStatusMap[diffusionId] = diffusionStatus
+			DiffusionStatusMap["election"] = diffusionStatus
 
 			sndmsg := msg_format(TypeField, DiffusionMessage) +
-				msg_format(DiffusionType, MsgAccessRequest) +
-				msg_format(SenderId, senderAddr.String()) + // Use the sender's address as the sender ID : the site who ask for admission
-				msg_format(ContentField, diffusionId) +
-				msg_format(ColorDiffusion, BlueMsg)
+				msg_format(DiffusionType, ElectionMessage) + //
+				msg_format(SenderId, id) + // Use the sender's address as the sender ID : the site who ask for admission
+				msg_format(ContentField, "election") +
+				msg_format(ColorDiffusion, BlueMsg) +
+				msg_format(ElectedSite, id) // The site that is currently elected
 
 			nb_send := len(connectedSites)
 			for _, addr := range connectedSites {
@@ -208,11 +223,19 @@ func processMessage(id, msg string, admittedCh chan<- bool, logger *log.Logger, 
 		diffusionId := findval(msg, ContentField, true)
 		color := findval(msg, ColorDiffusion, true)
 
-		if _, exists := DiffusionStatusMap[diffusionId]; !exists {
+		if diffusionType == ElectionMessage && DiffusionStatusMap["election"] == nil {
 			diffusionStatus := &DiffusionStatus{
-				id:           findval(msg, SenderId, true),
-				nbNeighbors:  len(connectedSites),
-				parent:       "",
+				id:          findval(msg, SenderId, true),
+				nbNeighbors: len(connectedSites),
+				parent:      "",
+				elected:     Infinity,
+			}
+			 DiffusionStatusMap["election"] = diffusionStatus
+		} else if _, exists := DiffusionStatusMap[diffusionId]; !exists {
+			diffusionStatus := &DiffusionStatus{
+				id:          findval(msg, SenderId, true),
+				nbNeighbors: len(connectedSites),
+				parent:      "",
 			}
 			DiffusionStatusMap[diffusionId] = diffusionStatus
 			logger.Printf("[%s] NEW DIFFUSION: %s\n", id, diffusionId)
@@ -221,13 +244,101 @@ func processMessage(id, msg string, admittedCh chan<- bool, logger *log.Logger, 
 		switch color {
 		case BlueMsg:
 			switch diffusionType {
+			case ElectionMessage:
+				electedSite := findval(msg, ElectedSite, true)
+				if electedSite > DiffusionStatusMap["election"].elected {
+					DiffusionStatusMap["election"].elected = electedSite
+					DiffusionStatusMap["election"].parent = findval(msg, SenderId, true)
+					DiffusionStatusMap["election"].nbNeighbors -= 1
+				
+				if DiffusionStatusMap["election"].nbNeighbors > 0 {
+					sndmsg := msg_format(TypeField, DiffusionMessage) +
+					msg_format(DiffusionType, ElectionMessage) + //
+					msg_format(SenderId, id) + // Use the sender's address as the sender ID : the site who ask for admission
+					msg_format(ContentField, "election") +
+					msg_format(ColorDiffusion, BlueMsg) +
+					msg_format(ElectedSite, electedSite) // The site that is currently elected
+
+				nb_send := len(connectedSites)
+				for _, addr := range connectedSites {
+					_, err := conn.WriteToUDP([]byte(sndmsg), addr)
+					if err != nil {
+						logger.Printf("[%s] ERROR: failed to send diffusion message to %s: %v\n", id, addr, err)
+						nb_send--
+					}
+				}
+			}else{
+					sndmsg := msg_format(TypeField, DiffusionMessage) +
+					msg_format(DiffusionType, ElectionMessage) + //
+					msg_format(SenderId, id) + // Use the sender's address as the sender ID : the site who ask for admission
+					msg_format(ContentField, "election") +
+					msg_format(ColorDiffusion, RedMsg) +
+					msg_format(ElectedSite, electedSite) // The site that is currently elected
+
+				nb_send := len(connectedSites)
+				for _, addr := range connectedSites {
+					_, err := conn.WriteToUDP([]byte(sndmsg), addr)
+					if err != nil {
+						logger.Printf("[%s] ERROR: failed to send diffusion message to %s: %v\n", id, addr, err)
+						nb_send--
+					}
+				}
+				}
+			}else if electedSite == DiffusionStatusMap["election"].elected{
+				//ATTENTION COMMENT ENVOYER AU PARENT
+					sndmsg := msg_format(TypeField, DiffusionMessage) +
+					msg_format(DiffusionType, ElectionMessage) + //
+					msg_format(SenderId, id) + // Use the sender's address as the sender ID : the site who ask for admission
+					msg_format(ContentField, "election") +
+					msg_format(ColorDiffusion, RedMsg) +
+					msg_format(ElectedSite, electedSite) // The site that is currently elected
+
+					_, err := conn.WriteToUDP([]byte(sndmsg), DiffusionStatusMap["election"].parent)
+					if err != nil {
+						logger.Printf("[%s] ERROR: failed to send diffusion message to %s: %v\n", id, DiffusionStatusMap["election"].parent, err)
+						nb_send--
+					}
+			}
+		case RedMsg:
+			electedSite := findval(msg, ElectedSite, true)
+			if electedSite == DiffusionStatusMap["election"].elected {
+				DiffusionStatusMap["election"].neighbors -= 1
+				if DiffusionStatusMap["election"].neighbors == 0{
+					if electedSite != DiffusionStatusMap["election"].electedSite{
+						sndmsg := msg_format(TypeField, DiffusionMessage) +
+						msg_format(DiffusionType, ElectionMessage) + //
+						msg_format(SenderId, id) + // Use the sender's address as the sender ID : the site who ask for admission
+						msg_format(ContentField, "election") +
+						msg_format(ColorDiffusion, RedMsg) +
+						msg_format(ElectedSite, electedSite) // The site that is currently elected
+
+						_, err := conn.WriteToUDP([]byte(sndmsg), DiffusionStatusMap["election"].parent)
+						if err != nil {
+							logger.Printf("[%s] ERROR: failed to send diffusion message to %s: %v\n", id, DiffusionStatusMap["election"].parent, err)
+							nb_send--
+						}
+					}else {
+						// reinitialize the current site for the next elecition 
+						diffusionStatus := &DiffusionStatus{
+								id:          id,
+								nbNeighbors: len(connectedSites),
+								parent:      "",
+								elected:     Infinity,
+							}
+							DiffusionStatusMap["election"] = diffusionStatus
+					}
+				}
+			}
+
+
+			
 			case OtherMsgPrefix:
 				logger.Printf("[%s] RECEIVED: blue message %s from %s\n", id, findval(msg, ContentField, true), senderAddr)
 			case MsgAccessRequest:
-				logger.Printf("[%s] RECEIVED: blue message for diffusion type %s from %s\n", id, diffusionType, senderAddr)
+				logger.Printf("[%s] RECEIVED: blue message for eletion type %s from %s\n", id, diffusionType, senderAddr)
 			}
 
-			if DiffusionStatusMap[diffusionId].parent == "" {
+			if DiffusionStatusMap[diffusionId].parent == "" { // VOIR COMMENT ADAPTER CA
 				// This is the first message, so we set the parent to the sender
 				DiffusionStatusMap[diffusionId].parent = senderAddr.String()
 				DiffusionStatusMap[diffusionId].nbNeighbors -= 1
@@ -286,7 +397,7 @@ func processMessage(id, msg string, admittedCh chan<- bool, logger *log.Logger, 
 					switch diffusionType {
 					case MsgAccessRequest:
 						response := msg_format(TypeField, MsgAccessGranted) +
-						msg_format(SenderId, DiffusionStatusMap[diffusionId].id) // it is not the real sender id hear but the id of the site who ask for admission
+							msg_format(SenderId, DiffusionStatusMap[diffusionId].id) // it is not the real sender id hear but the id of the site who ask for admission
 						targetAddr, err := net.ResolveUDPAddr("udp", DiffusionStatusMap[diffusionId].id)
 						if err != nil {
 							logger.Printf("[%s] ERROR: failed to resolve address %s: %v\n", id, DiffusionStatusMap[diffusionId].id, err)
@@ -302,7 +413,7 @@ func processMessage(id, msg string, admittedCh chan<- bool, logger *log.Logger, 
 					}
 					// Delete the diffusion status since we are done with it
 					delete(DiffusionStatusMap, diffusionId)
-					
+
 				} else {
 					// Send a red message to the parent indicating no more neighbors to forward admission request
 					response := msg_format(TypeField, DiffusionMessage) +
@@ -324,29 +435,29 @@ func processMessage(id, msg string, admittedCh chan<- bool, logger *log.Logger, 
 			}
 		}
 
-	// default: // to remove in the future
-	// 	logger.Printf("[%s] RECEIVED: %s from %s\n", id, msg, senderAddr)
-	// 	// If the message is not an admission request or response, we assume it's a broadcast message
-	// 	// and we forward it to all connected sites except the sender
-	// 	senderId := findval(msg, SenderId, true)
+		// default: // to remove in the future
+		// 	logger.Printf("[%s] RECEIVED: %s from %s\n", id, msg, senderAddr)
+		// 	// If the message is not an admission request or response, we assume it's a broadcast message
+		// 	// and we forward it to all connected sites except the sender
+		// 	senderId := findval(msg, SenderId, true)
 
-	// 	if senderId == site_id_from_others {
-	// 		// This is a message from us, so we ignore it
-	// 		logger.Printf("[%s] IGNORED: message from self (%s)\n", id, senderAddr)
-	// 		return
-	// 	}
+		// 	if senderId == site_id_from_others {
+		// 		// This is a message from us, so we ignore it
+		// 		logger.Printf("[%s] IGNORED: message from self (%s)\n", id, senderAddr)
+		// 		return
+		// 	}
 
-	// 	forwardCount := 0
-	// 	for _, addr := range connectedSites {
-	// 		// Don't send back to the sender
-	// 		if addr.String() != senderAddr.String() {
-	// 			conn.WriteToUDP([]byte(msg), addr)
-	// 			forwardCount++
-	// 		}
-	// 	}
-	// 	if forwardCount > 0 {
-	// 		logger.Printf("[%s] FORWARDED: message to %d sites\n", id, forwardCount)
-	// 	}
+		// 	forwardCount := 0
+		// 	for _, addr := range connectedSites {
+		// 		// Don't send back to the sender
+		// 		if addr.String() != senderAddr.String() {
+		// 			conn.WriteToUDP([]byte(msg), addr)
+		// 			forwardCount++
+		// 		}
+		// 	}
+		// 	if forwardCount > 0 {
+		// 		logger.Printf("[%s] FORWARDED: message to %d sites\n", id, forwardCount)
+		// 	}
 	}
 }
 
