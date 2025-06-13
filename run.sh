@@ -13,6 +13,9 @@ cleanup () {
 
   # Suppression des processus de l'application ctl
   killall controler 2> /dev/null
+
+  # Suppression des processus de l'application network
+  killall network 2> /dev/null
  
   # Suppression des processus tee et cat
   killall tee 2> /dev/null
@@ -63,6 +66,7 @@ fi
 
 # build Go executables
 go work use
+go build -o build/network ./network
 go build -o build/controler ./controler
 go build -o build/app ./app
 
@@ -80,6 +84,8 @@ for (( i=0; i< N; i++ )); do
     "$PWD/build/app" -id "$i" -o "$OUTPUTS_DIR" -debug="$DEBUG_MODE" < "$FIFO_DIR/in_A$i" > "$FIFO_DIR/out_A$i" &
     # launch controller with its ID and total N
     "$PWD/build/controler" -id "$i" -N "$N" < "$FIFO_DIR/in_C$i" > "$FIFO_DIR/out_C$i" &
+    # launch controller with its ID and total N
+    "$PWD/build/network" -id "$i" -N "$N" &
 done
 
 # wire the ring: each app output feeds its controller; each controller output tees to its app and to next controller
