@@ -1,3 +1,3 @@
 package main
 
-// TODO: remove if not used
+// TODO: remove what is useless at the end

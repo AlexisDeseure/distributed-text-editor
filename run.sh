@@ -70,12 +70,14 @@ go build -o build/network ./network
 go build -o build/controler ./controler
 go build -o build/app ./app
 
-# create FIFOs for each app and controller only if they don't already exist
+# create FIFOs for each app and controller and network only if they don't already exist
 for (( i=0; i< N; i++ )); do
     [ -p "$FIFO_DIR/in_A$i" ] || mkfifo "$FIFO_DIR/in_A$i"
     [ -p "$FIFO_DIR/out_A$i" ] || mkfifo "$FIFO_DIR/out_A$i"
     [ -p "$FIFO_DIR/in_C$i" ] || mkfifo "$FIFO_DIR/in_C$i"
     [ -p "$FIFO_DIR/out_C$i" ] || mkfifo "$FIFO_DIR/out_C$i"
+    [ -p "$FIFO_DIR/in_N$i" ] || mkfifo "$FIFO_DIR/in_N$i"
+    [ -p "$FIFO_DIR/out_N$i" ] || mkfifo "$FIFO_DIR/out_N$i"
 done
 
 # start all apps and controllers
@@ -85,16 +87,17 @@ for (( i=0; i< N; i++ )); do
     # launch controller with its ID and total N
     "$PWD/build/controler" -id "$i" -N "$N" < "$FIFO_DIR/in_C$i" > "$FIFO_DIR/out_C$i" &
     # launch controller with its ID and total N
-    "$PWD/build/network" -id "$i" -N "$N" &
+    "$PWD/build/network" -id "$i" -N "$N" < "$FIFO_DIR/in_N$i" > "$FIFO_DIR/out_N$i" &
 done
 
 # wire the ring: each app output feeds its controller; each controller output tees to its app and to next controller
 for (( i=0; i< N; i++ )); do
-    next=$(( (i + 1) % N ))
     # app -> its controller
     cat "$FIFO_DIR/out_A$i" > "$FIFO_DIR/in_C$i" &
-    # controller -> its app and next controller
-    cat "$FIFO_DIR/out_C$i" | tee "$FIFO_DIR/in_A$i" > "$FIFO_DIR/in_C$next" &
+    # controller -> its app and its network
+    cat "$FIFO_DIR/out_C$i" | tee "$FIFO_DIR/in_A$i" > "$FIFO_DIR/in_N$i" &
+    # network -> its controller (next network by tcp in layer itself)
+    cat "$FIFO_DIR/out_N$i" > "$FIFO_DIR/in_C$i" &
 done
 
 # wait for all background processes
