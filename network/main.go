@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -40,9 +39,10 @@ const (
 
 var (
 	timeID int
-	id     *int = flag.Int("id", 0, "id of site")
-	N      *int = flag.Int("N", 1, "number of sites")
-	s      int  = 0
+	id     *int   = flag.Int("id", 0, "id of site")
+	N      *int   = flag.Int("N", 1, "number of sites")
+	s      int    = 0
+	ip     string = getLocalIP()
 )
 
 var portBase = 9000 // Base port for node communication
@@ -52,8 +52,7 @@ func main() {
 	flag.Parse()
 
 	// Listens on its own port
-	listenPort := portBase + *id
-	go startTCPServer(listenPort)
+	go startTCPServer()
 
 	// Implement progressive random topology
 	connectToRandomTopology()
@@ -61,11 +60,18 @@ func main() {
 	// Wait a bit to ensure connections are established
 	time.Sleep(1 * time.Second)
 
-	// TODO: tmp wait forever
+	// Read stdin
+	go readController()
+
+	time.Sleep(5 * time.Second)
+	printConnectedSites()
+
+	// Wait forever
 	select {}
 }
 
-func startTCPServer(port int) {
+func startTCPServer() {
+	port := portBase + *id
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		display_e("Server error: " + err.Error())
@@ -79,17 +85,18 @@ func startTCPServer(port int) {
 			display_e("Accept error: " + err.Error())
 			continue
 		}
-		display_w("New connection from " + conn.RemoteAddr().String())
-		// Handle receiving connexion
-		go handleReceivingConnection(conn)
+		addr := conn.RemoteAddr().String()
+		display_w("New connection from " + addr)
+		registerConn(strconv.Itoa(timeID), conn)
+		go readConn(conn)
 	}
 }
 
 func connectToPeer(port int, timeID int) {
-	addr := fmt.Sprintf("localhost:%d", port)
+	addr := fmt.Sprintf("%s:%d", ip, port)
 
 	// Avoid connecting to the same peer multiple times
-	if _, exists := connectedSites[strconv.Itoa(timeID)]; exists {
+	if isConnected(strconv.Itoa(timeID)) {
 		return
 	}
 
@@ -106,9 +113,7 @@ func connectToPeer(port int, timeID int) {
 			time.Sleep(retryDelay)
 			continue
 		}
-		// connectedSites[addr] = &conn
-		connectedSites[strconv.Itoa(timeID)] = &conn
-		printConnectedSites()
+		registerConn(strconv.Itoa(timeID), conn)
 		display_w("Connected to peer on " + addr)
 
 		// Send port
@@ -116,97 +121,97 @@ func connectToPeer(port int, timeID int) {
 		// send the ID and port based on time creation to the connected site
 		fmt.Fprintf(conn, "ID:%d-PORT:%d\n", timeID, portBase+*id)
 
-		go handleSendingConnection(conn)
+		go readConn(conn)
 		return
 	}
 
 	display_e(fmt.Sprintf("Failed to connect to %s after %d attempts", addr, maxRetries))
 }
 
-func handleReceivingConnection(conn net.Conn) {
+func readConn(conn net.Conn) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 
-	var remoteSiteIDStr string
-	var remotePort int // Nouvelle variable pour stocker le port distant
-	var err error
-	// var remotePort int
-	// var remoteSiteID int
-	if scanner.Scan() {
-		msg := scanner.Text()
-		// if strings.HasPrefix(msg, "PORT:") {
-		// 	remotePort, _ = strconv.Atoi(strings.TrimPrefix(msg, "PORT:"))
-		// 	addr := fmt.Sprintf("localhost:%d", remotePort)
-
-		// 	// We connect to the port if not already connected
-		// 	if _, exists := connectedSites[addr]; !exists {
-		// 		display_w("Back-connecting to " + addr)
-		// 		go connectToPeer(remotePort)
-		// 	}
-		// } else {
-		// 	display_w("Unexpected message: " + msg)
-		// }
-		if strings.HasPrefix(msg, "ID:") && strings.Contains(msg, "-PORT:") {
-			parts := strings.Split(msg, "-PORT:")
-			if len(parts) != 2 {
-				display_e("Malformed initial message: " + msg + " from " + conn.RemoteAddr().String())
-				conn.Close()
-				return
-			}
-
-			// Extraire le timeID
-			remoteSiteIDStr = strings.TrimPrefix(parts[0], "ID:")
-			_, err = strconv.Atoi(remoteSiteIDStr) // Juste pour valider que c'est un nombre
-			if err != nil {
-				display_e("Invalid remote ID received: " + remoteSiteIDStr + " from " + conn.RemoteAddr().String())
-				conn.Close()
-				return
-			}
-
-			// Extraire le port
-			remotePort, err = strconv.Atoi(parts[1])
-			if err != nil {
-				display_e("Invalid remote Port received: " + parts[1] + " from " + conn.RemoteAddr().String())
-				conn.Close()
-				return
-			}
-
-			display_w(fmt.Sprintf("Received remote ID: %s and Port: %d from %s", remoteSiteIDStr, remotePort, conn.RemoteAddr().String()))
-
-			mutex.Lock()
-			// We connect to the port if not already connected
-			if existingConn, exists := connectedSites[remoteSiteIDStr]; exists && existingConn != nil && *existingConn != nil {
-				display_w(fmt.Sprintf("Connection to ID: %s (address: %s) already exists. Closing redundant incoming connection from %s.",
-					remoteSiteIDStr, (*existingConn).RemoteAddr().String(), conn.RemoteAddr().String()))
-				conn.Close() // Fermer la connexion entrante redondante
-				mutex.Unlock()
-				return
-			}
-			connectedSites[remoteSiteIDStr] = &conn // Stocke un pointeur vers la connexion
-			mutex.Unlock()
-			printConnectedSites()
-
-			// Envoyer notre propre timeID et port en retour pour que le site distant puisse nous identifier
-			fmt.Fprintf(conn, "ID:%d-PORT:%d\n", timeID, portBase+*id)
-
-			// La logique de back-connecting via 'go connectToPeer(remotePort)' n'est plus nécessaire ici.
-			// L'échange d'ID et l'ajout à connectedSites garantissent la connaissance mutuelle.
-			// Si le 'connectToPeer' initial échoue, les retries le géreront.
-
-		} else {
-			display_w("Unexpected initial message (not ID-PORT format): " + msg + " from " + conn.RemoteAddr().String())
-			conn.Close() // Fermer la connexion si le format initial est incorrect
-			return
-		}
-	} else if err = scanner.Err(); err != nil {
-		display_e("Error reading initial message: " + err.Error())
-		conn.Close()
-		return
-	} else { // EOF ou connexion fermée avant le message initial
-		display_e("Connection closed before initial ID-PORT message from " + conn.RemoteAddr().String())
-		conn.Close()
-		return
-	}
+	//var remoteSiteIDStr string
+	//var remotePort int // Nouvelle variable pour stocker le port distant
+	//var err error
+	//// var remotePort int
+	//// var remoteSiteID int
+	//if scanner.Scan() {
+	//	msg := scanner.Text()
+	//	// if strings.HasPrefix(msg, "PORT:") {
+	//	// 	remotePort, _ = strconv.Atoi(strings.TrimPrefix(msg, "PORT:"))
+	//	// 	addr := fmt.Sprintf("localhost:%d", remotePort)
+	//
+	//	// 	// We connect to the port if not already connected
+	//	// 	if _, exists := connectedSites[addr]; !exists {
+	//	// 		display_w("Back-connecting to " + addr)
+	//	// 		go connectToPeer(remotePort)
+	//	// 	}
+	//	// } else {
+	//	// 	display_w("Unexpected message: " + msg)
+	//	// }
+	//	if strings.HasPrefix(msg, "ID:") && strings.Contains(msg, "-PORT:") {
+	//		parts := strings.Split(msg, "-PORT:")
+	//		if len(parts) != 2 {
+	//			display_e("Malformed initial message: " + msg + " from " + conn.RemoteAddr().String())
+	//			conn.Close()
+	//			return
+	//		}
+	//
+	//		// Extraire le timeID
+	//		remoteSiteIDStr = strings.TrimPrefix(parts[0], "ID:")
+	//		_, err = strconv.Atoi(remoteSiteIDStr) // Juste pour valider que c'est un nombre
+	//		if err != nil {
+	//			display_e("Invalid remote ID received: " + remoteSiteIDStr + " from " + conn.RemoteAddr().String())
+	//			conn.Close()
+	//			return
+	//		}
+	//
+	//		// Extraire le port
+	//		remotePort, err = strconv.Atoi(parts[1])
+	//		if err != nil {
+	//			display_e("Invalid remote Port received: " + parts[1] + " from " + conn.RemoteAddr().String())
+	//			conn.Close()
+	//			return
+	//		}
+	//
+	//		display_w(fmt.Sprintf("Received remote ID: %s and Port: %d from %s", remoteSiteIDStr, remotePort, conn.RemoteAddr().String()))
+	//
+	//		mutex.Lock()
+	//		// We connect to the port if not already connected
+	//		if existingConn, exists := connectedSites[remoteSiteIDStr]; exists && existingConn != nil && *existingConn != nil {
+	//			display_w(fmt.Sprintf("Connection to ID: %s (address: %s) already exists. Closing redundant incoming connection from %s.",
+	//				remoteSiteIDStr, (*existingConn).RemoteAddr().String(), conn.RemoteAddr().String()))
+	//			conn.Close() // Fermer la connexion entrante redondante
+	//			mutex.Unlock()
+	//			return
+	//		}
+	//		connectedSites[remoteSiteIDStr] = &conn // Stocke un pointeur vers la connexion
+	//		mutex.Unlock()
+	//		printConnectedSites()
+	//
+	//		// Envoyer notre propre timeID et port en retour pour que le site distant puisse nous identifier
+	//		fmt.Fprintf(conn, "ID:%d-PORT:%d\n", timeID, portBase+*id)
+	//
+	//		// La logique de back-connecting via 'go connectToPeer(remotePort)' n'est plus nécessaire ici.
+	//		// L'échange d'ID et l'ajout à connectedSites garantissent la connaissance mutuelle.
+	//		// Si le 'connectToPeer' initial échoue, les retries le géreront.
+	//
+	//	} else {
+	//		display_w("Unexpected initial message (not ID-PORT format): " + msg + " from " + conn.RemoteAddr().String())
+	//		conn.Close() // Fermer la connexion si le format initial est incorrect
+	//		return
+	//	}
+	//} else if err = scanner.Err(); err != nil {
+	//	display_e("Error reading initial message: " + err.Error())
+	//	conn.Close()
+	//	return
+	//} else { // EOF ou connexion fermée avant le message initial
+	//	display_e("Connection closed before initial ID-PORT message from " + conn.RemoteAddr().String())
+	//	conn.Close()
+	//	return
+	//}
 
 	// 	if strings.HasPrefix(msg, "ID:") {
 	// 		remoteSiteID, _ = strconv.Atoi(strings.TrimPrefix(msg, "ID:"))
@@ -265,7 +270,7 @@ func handleReceivingConnection(conn net.Conn) {
 						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, timeID, msg_sender, msg_content)
 						// send only to parent
 						conn := connectedSites[msg_sender]
-						_, err := (*conn).Write([]byte(sndmsg))
+						_, err := writeToConn(*conn, sndmsg)
 						if err != nil {
 							display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
 							continue
@@ -280,7 +285,7 @@ func handleReceivingConnection(conn net.Conn) {
 					sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, timeID, msg_sender, msg_content)
 					// send only to parent
 					conn := connectedSites[msg_sender]
-					_, err := (*conn).Write([]byte(sndmsg))
+					_, err := writeToConn(*conn, sndmsg)
 					if err != nil {
 						display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
 						continue
@@ -298,7 +303,7 @@ func handleReceivingConnection(conn net.Conn) {
 						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, timeID, current_duffusion_status.parent, msg_content)
 						// send only to parent
 						conn := connectedSites[current_duffusion_status.parent]
-						_, err := (*conn).Write([]byte(sndmsg))
+						_, err := writeToConn(*conn, sndmsg)
 						if err != nil {
 							display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
 							continue
@@ -311,7 +316,7 @@ func handleReceivingConnection(conn net.Conn) {
 	}
 }
 
-func handleSendingConnection(conn net.Conn) {
+func readController() {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		msg, err := reader.ReadString('\n')
