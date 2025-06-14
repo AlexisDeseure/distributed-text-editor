@@ -80,24 +80,36 @@ for (( i=0; i< N; i++ )); do
     [ -p "$FIFO_DIR/out_N$i" ] || mkfifo "$FIFO_DIR/out_N$i"
 done
 
-# start all apps and controllers
-for (( i=0; i< N; i++ )); do
-    # launch application with its ID
-    "$PWD/build/app" -id "$i" -o "$OUTPUTS_DIR" -debug="$DEBUG_MODE" < "$FIFO_DIR/in_A$i" > "$FIFO_DIR/out_A$i" &
-    # launch controller with its ID and total N
-    "$PWD/build/controler" -id "$i" -N "$N" < "$FIFO_DIR/in_C$i" > "$FIFO_DIR/out_C$i" &
-    # launch controller with its ID and total N
-    "$PWD/build/network" -id "$i" -N "$N" < "$FIFO_DIR/in_N$i" > "$FIFO_DIR/out_N$i" &
-done
+# start sites progressively for random topology
+# Site A (id=0) starts first
+echo "Starting Site A (id=0)..."
+"$PWD/build/app" -id "0" -o "$OUTPUTS_DIR" -debug="$DEBUG_MODE" < "$FIFO_DIR/in_A0" > "$FIFO_DIR/out_A0" &
+"$PWD/build/controler" -id "0" -N "$N" < "$FIFO_DIR/in_C0" > "$FIFO_DIR/out_C0" &
+"$PWD/build/network" -id "0" -N "$N" < "$FIFO_DIR/in_N0" > "$FIFO_DIR/out_N0" &
 
-# wire the ring: each app output feeds its controller; each controller output tees to its app and to next controller
-for (( i=0; i< N; i++ )); do
-    # app -> its controller
+# wire Site A
+cat "$FIFO_DIR/out_A0" > "$FIFO_DIR/in_C0" &
+cat "$FIFO_DIR/out_C0" | tee "$FIFO_DIR/in_A0" > "$FIFO_DIR/in_N0" &
+cat "$FIFO_DIR/out_N0" > "$FIFO_DIR/in_C0" &
+
+sleep 1
+
+# start remaining sites progressively
+for (( i=1; i< N; i++ )); do
+    echo "Starting Site $(echo $i | tr '0123456789' 'ABCDEFGHIJ') (id=$i)..."
+    
+    # launch application, controller, and network with their IDs
+    "$PWD/build/app" -id "$i" -o "$OUTPUTS_DIR" -debug="$DEBUG_MODE" < "$FIFO_DIR/in_A$i" > "$FIFO_DIR/out_A$i" &
+    "$PWD/build/controler" -id "$i" -N "$N" < "$FIFO_DIR/in_C$i" > "$FIFO_DIR/out_C$i" &
+    "$PWD/build/network" -id "$i" -N "$N" < "$FIFO_DIR/in_N$i" > "$FIFO_DIR/out_N$i" &
+    
+    # wire the new site
     cat "$FIFO_DIR/out_A$i" > "$FIFO_DIR/in_C$i" &
-    # controller -> its app and its network
     cat "$FIFO_DIR/out_C$i" | tee "$FIFO_DIR/in_A$i" > "$FIFO_DIR/in_N$i" &
-    # network -> its controller (next network by tcp in layer itself)
     cat "$FIFO_DIR/out_N$i" > "$FIFO_DIR/in_C$i" &
+    
+    # wait a bit before starting the next site to allow connections to establish
+    sleep 1
 done
 
 # wait for all background processes

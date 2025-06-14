@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type DiffusionStatus struct {
@@ -51,18 +53,11 @@ func main() {
 	listenPort := portBase + *id
 	go startTCPServer(listenPort)
 
-	//// TODO: connect random to create random network
-	//rand.Seed(time.Now().UnixNano())
-	//next := rand.Intn(*N - 1)
-	//if next >= *id {
-	//	next++
-	//}
-	//nextPort := portBase + next
+	// Implement progressive random topology
+	connectToRandomTopology()
 
-	// FIXME: for now keep same struct, link to next one
-	nextPort := portBase + (*id+1)%*N
-
-	go connectToPeer(nextPort)
+	// Wait a bit to ensure connections are established
+	time.Sleep(1 * time.Second)
 
 	// TODO: tmp wait forever
 	select {}
@@ -96,9 +91,17 @@ func connectToPeer(port int) {
 		return
 	}
 
-	for {
+	// Try to connect with retries (for progressive joining)
+	maxRetries := 30
+	retryDelay := 500 * time.Millisecond
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
+			if attempt == 0 {
+				display_w(fmt.Sprintf("Waiting for peer on %s to become available...", addr))
+			}
+			time.Sleep(retryDelay)
 			continue
 		}
 		connectedSites[addr] = &conn
@@ -111,6 +114,8 @@ func connectToPeer(port int) {
 		go handleSendingConnection(conn)
 		return
 	}
+
+	display_e(fmt.Sprintf("Failed to connect to %s after %d attempts", addr, maxRetries))
 }
 
 func handleReceivingConnection(conn net.Conn) {
@@ -268,4 +273,68 @@ func printConnectedSites() {
 		}
 	}
 	display_e("")
+}
+
+func connectToRandomTopology() {
+	// All sites use the same logic: choose number of connections based on their ID
+	// Site A (id=0): chooses between 0 and 0 (always 0)
+	// Site B (id=1): chooses between 1 and 1 (always 1)
+	// Site C and beyond: choose between 1 and min(id, 3)
+
+	// Create a local random generator
+	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(*id)))
+
+	// Determine the range for number of connections
+	var minConnections, maxConnections int
+
+	if *id == 0 {
+		minConnections = 0
+		maxConnections = 0
+	} else {
+		minConnections = 1
+		maxConnections = min(*id, 3)
+	}
+
+	// Choose number of connections within the range
+	var numConnections int
+	if minConnections == maxConnections {
+		numConnections = minConnections
+	} else {
+		numConnections = rng.Intn(maxConnections - minConnections + 1) + minConnections
+	}
+
+	display_w(fmt.Sprintf("Site %d attempting %d connections to existing sites", *id, numConnections))
+
+	// If no connections needed, return early
+	if numConnections == 0 {
+		display_w(fmt.Sprintf("Site %d starting alone", *id))
+		return
+	}
+
+	// Create list of existing sites (0 to id-1)
+	existingSites := make([]int, *id)
+	for i := 0; i < *id; i++ {
+		existingSites[i] = i
+	}
+
+	// Shuffle the list and take the first numConnections
+	for i := len(existingSites) - 1; i > 0; i-- {
+		j := rng.Intn(i + 1)
+		existingSites[i], existingSites[j] = existingSites[j], existingSites[i]
+	}
+
+	// Connect to the selected sites
+	connectionsToMake := numConnections
+	if connectionsToMake > len(existingSites) {
+		connectionsToMake = len(existingSites)
+	}
+
+	for i := 0; i < connectionsToMake; i++ {
+		targetSite := existingSites[i]
+		targetPort := portBase + targetSite
+		display_e(fmt.Sprintf("Site %d connecting to Site %d (port %d)", *id, targetSite, targetPort))
+		go connectToPeer(targetPort)
+		// Small delay between connections to avoid overwhelming
+		time.Sleep(100 * time.Millisecond)
+	}
 }
