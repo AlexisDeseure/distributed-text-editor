@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"regexp"
 
 	"app/utils"
 
@@ -57,6 +58,7 @@ const autoSaveInterval = 500 * time.Millisecond
 
 // const autoSaveInterval = 2 * time.Second
 
+var filename *string = flag.String("f", "New document", "name of the file to edit")
 var id *int = flag.Int("id", 0, "id of site")
 
 var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
@@ -82,12 +84,14 @@ var (
 func main() {
 	// Parse command line arguments
 	flag.Parse()
-	if *id < 0 {
-		display_e("Invalid site id")
-		return
-	}
 
-	localSaveFilePath = fmt.Sprintf("%s/modifs_%d.log", *outputDir, *id)
+	// Sanitize filename by replacing spaces and special characters with "_"
+	reg := regexp.MustCompile("[^a-zA-Z0-9_-]+")
+	sanitizedFilename := reg.ReplaceAllString(*filename, "_")
+	// However, for simplicity with current dependencies, we'll stick to ReplaceAll for now.
+	// If more complex sanitization is needed, the regexp approach is recommended.
+
+	localSaveFilePath = fmt.Sprintf("%s/%s.log", *outputDir, sanitizedFilename)
 
 	// Initialize the UI and get window and text area
 	myWindow, textArea := initUI()
@@ -281,7 +285,7 @@ func initUI() (fyne.Window, *widget.Entry) {
     myApp.Settings().SetTheme(&CustomTheme{})
 
     // Create the window
-    myWindow := myApp.NewWindow("Distributed Editor n" + fmt.Sprint(*id))
+    myWindow := myApp.NewWindow(*filename)
     myWindow.Resize(fyne.NewSize(800, 600))
 
     // Create the text area

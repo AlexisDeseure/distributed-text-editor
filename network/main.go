@@ -39,10 +39,10 @@ const (
 )
 
 var (
-	timeID int
-	id     *int = flag.Int("id", 0, "id of site")
-	N      *int = flag.Int("N", 1, "number of sites")
-	s      int  = 0
+	timeID  int
+	id      *int    = flag.Int("id", 0, "id of site")
+	targets *string = flag.String("targets", "", "comma-separated list of targets (e.g., 'hostA:portA,hostB:portB')")
+	s       int     = 0
 )
 
 var portBase = 9000 // Base port for node communication
