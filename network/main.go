@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -18,6 +19,7 @@ type DiffusionStatus struct {
 
 var mutex = &sync.Mutex{}
 var DiffusionStatusMap = make(map[string]*DiffusionStatus)
+var connectedSites = make(map[string]*net.Conn)
 
 const (
 	BlueMsg string = "blu"
@@ -75,20 +77,32 @@ func startTCPServer(port int) {
 			display_e("Accept error: " + err.Error())
 			continue
 		}
+		display_w("New connection from " + conn.RemoteAddr().String())
 		// Handle receiving connexion
 		go handleReceivingConnection(conn)
 	}
 }
 
 func connectToPeer(port int) {
+	addr := fmt.Sprintf("localhost:%d", port)
+
+	// Avoid connecting to the same peer multiple times
+	if _, exists := connectedSites[addr]; exists {
+		return
+	}
+
 	for {
-		conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
+		conn, err := net.Dial("tcp", addr)
 		if err != nil {
-			// Connexion still not available, wait
 			continue
 		}
-		display_w("Connected to peer on port " + strconv.Itoa(port))
-		// Handle sending connexion link peer
+		connectedSites[addr] = &conn
+		printConnectedSites()
+		display_w("Connected to peer on " + addr)
+
+		// Send port
+		fmt.Fprintf(conn, "PORT:%d\n", portBase+*id)
+
 		go handleSendingConnection(conn)
 		return
 	}
@@ -97,10 +111,29 @@ func connectToPeer(port int) {
 func handleReceivingConnection(conn net.Conn) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
+
+	var remotePort int
+	if scanner.Scan() {
+		msg := scanner.Text()
+		if strings.HasPrefix(msg, "PORT:") {
+			remotePort, _ = strconv.Atoi(strings.TrimPrefix(msg, "PORT:"))
+			addr := fmt.Sprintf("localhost:%d", remotePort)
+
+			// We connect to the port if not already connected
+			if _, exists := connectedSites[addr]; !exists {
+				display_w("Back-connecting to " + addr)
+				go connectToPeer(remotePort)
+			}
+		} else {
+			display_w("Unexpected message: " + msg)
+		}
+	}
+
+	// Message processing loop
 	for scanner.Scan() {
 		msg := scanner.Text()
 		display_w("Received: " + msg)
-		if msg != "" { // FIXME: transfer the message to controller without doing anything for now
+		if msg != "" {
 			fmt.Println(msg)
 		}
 	}
@@ -142,4 +175,22 @@ func handleSendingConnection(conn net.Conn) {
 		}
 		mutex.Unlock()
 	}
+}
+
+// ===========================
+
+// Helper function to print connected sites
+func printConnectedSites() {
+    mutex.Lock()
+    defer mutex.Unlock()
+
+    display_e(fmt.Sprintf("Connected sites (%d total):", len(connectedSites)))
+    for addr, conn := range connectedSites {
+        if conn != nil && *conn != nil {
+            display_e(fmt.Sprintf("  - %s (active)", addr))
+        } else {
+            display_e(fmt.Sprintf("  - %s (nil connection)", addr))
+        }
+    }
+    display_e("")
 }
