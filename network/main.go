@@ -7,6 +7,26 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
+)
+
+type DiffusionStatus struct {
+	sender_id   string
+	nbNeighbors int
+	parent      string
+}
+
+var mutex = &sync.Mutex{}
+var DiffusionStatusMap = make(map[string]*DiffusionStatus)
+
+const (
+	BlueMsg string = "blu"
+	RedMsg  string = "red"
+)
+
+const (
+	DiffusionStatusID string = "dsid"
+	ColorDiffusion    string = "clr"
 )
 
 var (
@@ -96,10 +116,30 @@ func handleSendingConnection(conn net.Conn) {
 		}
 
 		// FIXME: transfer the message to next network without doing anything for now
-		_, err = conn.Write([]byte(msg))
+		// each message is transfered by wave
+		mutex.Lock()
+
+		count := len(DiffusionStatusMap)
+		message_id := count
+
+		diffusionId := fmt.Sprintf("%d:message_%d", *id, message_id) // FIXME: add the current port to ID
+		diffusionStatus := &DiffusionStatus{
+			sender_id:   strconv.Itoa(*id),
+			nbNeighbors: 1, // FIXME: shold be repalced by len(connectedSites)
+			parent:      strconv.Itoa(*id),
+		}
+
+		DiffusionStatusMap[diffusionId] = diffusionStatus
+
+		sndmsg := msg_format(DiffusionStatusID, diffusionId) +
+			msg_format(ColorDiffusion, BlueMsg)
+		sndmsg += msg
+
+		_, err = conn.Write([]byte(sndmsg))
 		if err != nil {
 			display_e("Error sending message: " + err.Error())
 			continue
 		}
+		mutex.Unlock()
 	}
 }
