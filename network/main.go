@@ -139,6 +139,7 @@ func handleReceivingConnection(conn net.Conn) {
 		msg := scanner.Text()
 		display_w("Received: " + msg)
 		if msg != "" { // FIXME: transfer the message to controller without doing anything for now
+			mutex.Lock()
 			msg_diffusion_id := findval(msg, DiffusionStatusID, false)
 			msg_color := findval(msg, ColorDiffusion, false)
 			msg_sender := findval(msg, SiteIdField, false)
@@ -148,8 +149,8 @@ func handleReceivingConnection(conn net.Conn) {
 
 			if current_duffusion_status == nil {
 				current_duffusion_status := &DiffusionStatus{
-					sender_id:   "", //FIXME : shold add ful id
-					nbNeighbors: 1,  // FIXME: shold be repalced by len(connectedSites)
+					sender_id:   "",                  //FIXME : shold add ful id
+					nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
 					parent:      "",
 				}
 				DiffusionStatusMap[msg_diffusion_id] = current_duffusion_status
@@ -168,11 +169,12 @@ func handleReceivingConnection(conn net.Conn) {
 					if current_duffusion_status.nbNeighbors > 0 {
 						// FIXME : send to all neibors except the parent
 						sndmsg := prepareWaveMessages(msg_diffusion_id, BlueMsg, id, "", msg_content)
-						sendWaveMassages(nil, msg_sender, sndmsg, nil)
+						sendWaveMassages(connectedSites, msg_sender, sndmsg)
 					} else {
 						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, id, msg_sender, msg_content)
 						// send only to parent
-						_, err := conn.Write([]byte(sndmsg))
+						conn := connectedSites[msg_sender]
+						_, err := (*conn).Write([]byte(sndmsg))
 						if err != nil {
 							display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
 							continue
@@ -186,7 +188,8 @@ func handleReceivingConnection(conn net.Conn) {
 
 					sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, id, msg_sender, msg_content)
 					// send only to parent
-					_, err := conn.Write([]byte(sndmsg))
+					conn := connectedSites[msg_sender]
+					_, err := (*conn).Write([]byte(sndmsg))
 					if err != nil {
 						display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
 						continue
@@ -203,7 +206,8 @@ func handleReceivingConnection(conn net.Conn) {
 						// forward the message to the wave initiator
 						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, id, current_duffusion_status.parent, msg_content)
 						// send only to parent
-						_, err := conn.Write([]byte(sndmsg))
+						conn := connectedSites[current_duffusion_status.parent]
+						_, err := (*conn).Write([]byte(sndmsg))
 						if err != nil {
 							display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
 							continue
@@ -211,6 +215,7 @@ func handleReceivingConnection(conn net.Conn) {
 					}
 				}
 			}
+			mutex.Unlock()
 		}
 	}
 }
@@ -234,7 +239,7 @@ func handleSendingConnection(conn net.Conn) {
 		diffusionId := fmt.Sprintf("%d:message_%d", *id, message_id) // FIXME: add the current port to ID
 		diffusionStatus := &DiffusionStatus{
 			sender_id:   strconv.Itoa(*id),
-			nbNeighbors: 1, // FIXME: shold be repalced by len(connectedSites)
+			nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
 			parent:      strconv.Itoa(*id),
 		}
 
@@ -242,7 +247,7 @@ func handleSendingConnection(conn net.Conn) {
 
 		sndmsg := prepareWaveMessages(diffusionId, BlueMsg, id, "", msg)
 
-		sendWaveMassages(nil, strconv.Itoa(*id), sndmsg, nil)
+		sendWaveMassages(connectedSites, strconv.Itoa(*id), sndmsg)
 		mutex.Unlock()
 	}
 }

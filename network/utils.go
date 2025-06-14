@@ -58,18 +58,15 @@ func prepareWaveMessages(messageID string, color string, senderID *int, receiver
 	return sndmsg
 }
 
-func sendWaveMassages(neighborhoods []string, parent string, sndmsg string, conns map[string]net.Conn) {
-	for _, neighbor := range neighborhoods {
-		if neighbor != parent {
-			conn, ok := conns[neighbor]
-			if !ok {
-				display_e("No connection found for neighbor: " + neighbor)
-				continue
-			}
-			_, err := conn.Write([]byte(sndmsg))
-			if err != nil {
-				display_e("Error sending message to " + neighbor + ": " + err.Error())
-				continue
+func sendWaveMassages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
+	for addr, conn := range neighborhoods {
+		if conn != nil && *conn != nil {
+			if addr != parent {
+				_, err := (*conn).Write([]byte(sndmsg))
+				if err != nil {
+					display_e("Error sending message to " + addr + ": " + err.Error())
+					continue
+				}
 			}
 		}
 	}
