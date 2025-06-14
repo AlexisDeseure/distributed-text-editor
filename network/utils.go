@@ -48,10 +48,10 @@ func findval(msg string, key string, verbose bool) string {
 	return ""
 }
 
-func prepareWaveMessages(messageID string, color string, senderID *int, receiverID string, msgContent string) string {
+func prepareWaveMessages(messageID string, color string, senderID int, receiverID string, msgContent string) string {
 	var sndmsg string = msg_format(DiffusionStatusID, messageID) +
 		msg_format(ColorDiffusion, color) +
-		msg_format(SiteIdField, strconv.Itoa(*senderID)) +
+		msg_format(SiteIdField, strconv.Itoa(senderID)) +
 		msg_format(SiteIdDestField, receiverID) + // FIXE ME
 		msg_format(MessageContent, msgContent)
 
@@ -59,12 +59,12 @@ func prepareWaveMessages(messageID string, color string, senderID *int, receiver
 }
 
 func sendWaveMassages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
-	for addr, conn := range neighborhoods {
+	for timerID, conn := range neighborhoods {
 		if conn != nil && *conn != nil {
-			if addr != parent {
+			if timerID != parent {
 				_, err := (*conn).Write([]byte(sndmsg))
 				if err != nil {
-					display_e("Error sending message to " + addr + ": " + err.Error())
+					display_e("Error sending message to " + timerID + ": " + err.Error())
 					continue
 				}
 			}

@@ -39,14 +39,16 @@ const (
 )
 
 var (
-	id *int = flag.Int("id", 0, "id of site")
-	N  *int = flag.Int("N", 1, "number of sites")
-	s  int  = 0
+	timeID int
+	id     *int = flag.Int("id", 0, "id of site")
+	N      *int = flag.Int("N", 1, "number of sites")
+	s      int  = 0
 )
 
 var portBase = 9000 // Base port for node communication
 
 func main() {
+	timeID = int(time.Now().UnixNano()) //actual time in nano seconds
 	flag.Parse()
 
 	// Listens on its own port
@@ -83,11 +85,11 @@ func startTCPServer(port int) {
 	}
 }
 
-func connectToPeer(port int) {
+func connectToPeer(port int, timeID int) {
 	addr := fmt.Sprintf("localhost:%d", port)
 
 	// Avoid connecting to the same peer multiple times
-	if _, exists := connectedSites[addr]; exists {
+	if _, exists := connectedSites[strconv.Itoa(timeID)]; exists {
 		return
 	}
 
@@ -104,12 +106,15 @@ func connectToPeer(port int) {
 			time.Sleep(retryDelay)
 			continue
 		}
-		connectedSites[addr] = &conn
+		// connectedSites[addr] = &conn
+		connectedSites[strconv.Itoa(timeID)] = &conn
 		printConnectedSites()
 		display_w("Connected to peer on " + addr)
 
 		// Send port
-		fmt.Fprintf(conn, "PORT:%d\n", portBase+*id)
+		// fmt.Fprintf(conn, "PORT:%d\n", portBase+*id)
+		// send the ID and port based on time creation to the connected site
+		fmt.Fprintf(conn, "ID:%d-PORT:%d\n", timeID, portBase+*id)
 
 		go handleSendingConnection(conn)
 		return
@@ -122,22 +127,103 @@ func handleReceivingConnection(conn net.Conn) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 
-	var remotePort int
+	var remoteSiteIDStr string
+	var remotePort int // Nouvelle variable pour stocker le port distant
+	var err error
+	// var remotePort int
+	// var remoteSiteID int
 	if scanner.Scan() {
 		msg := scanner.Text()
-		if strings.HasPrefix(msg, "PORT:") {
-			remotePort, _ = strconv.Atoi(strings.TrimPrefix(msg, "PORT:"))
-			addr := fmt.Sprintf("localhost:%d", remotePort)
+		// if strings.HasPrefix(msg, "PORT:") {
+		// 	remotePort, _ = strconv.Atoi(strings.TrimPrefix(msg, "PORT:"))
+		// 	addr := fmt.Sprintf("localhost:%d", remotePort)
 
-			// We connect to the port if not already connected
-			if _, exists := connectedSites[addr]; !exists {
-				display_w("Back-connecting to " + addr)
-				go connectToPeer(remotePort)
+		// 	// We connect to the port if not already connected
+		// 	if _, exists := connectedSites[addr]; !exists {
+		// 		display_w("Back-connecting to " + addr)
+		// 		go connectToPeer(remotePort)
+		// 	}
+		// } else {
+		// 	display_w("Unexpected message: " + msg)
+		// }
+		if strings.HasPrefix(msg, "ID:") && strings.Contains(msg, "-PORT:") {
+			parts := strings.Split(msg, "-PORT:")
+			if len(parts) != 2 {
+				display_e("Malformed initial message: " + msg + " from " + conn.RemoteAddr().String())
+				conn.Close()
+				return
 			}
+
+			// Extraire le timeID
+			remoteSiteIDStr = strings.TrimPrefix(parts[0], "ID:")
+			_, err = strconv.Atoi(remoteSiteIDStr) // Juste pour valider que c'est un nombre
+			if err != nil {
+				display_e("Invalid remote ID received: " + remoteSiteIDStr + " from " + conn.RemoteAddr().String())
+				conn.Close()
+				return
+			}
+
+			// Extraire le port
+			remotePort, err = strconv.Atoi(parts[1])
+			if err != nil {
+				display_e("Invalid remote Port received: " + parts[1] + " from " + conn.RemoteAddr().String())
+				conn.Close()
+				return
+			}
+
+			display_w(fmt.Sprintf("Received remote ID: %s and Port: %d from %s", remoteSiteIDStr, remotePort, conn.RemoteAddr().String()))
+
+			mutex.Lock()
+			// We connect to the port if not already connected
+			if existingConn, exists := connectedSites[remoteSiteIDStr]; exists && existingConn != nil && *existingConn != nil {
+				display_w(fmt.Sprintf("Connection to ID: %s (address: %s) already exists. Closing redundant incoming connection from %s.",
+					remoteSiteIDStr, (*existingConn).RemoteAddr().String(), conn.RemoteAddr().String()))
+				conn.Close() // Fermer la connexion entrante redondante
+				mutex.Unlock()
+				return
+			}
+			connectedSites[remoteSiteIDStr] = &conn // Stocke un pointeur vers la connexion
+			mutex.Unlock()
+			printConnectedSites()
+
+			// Envoyer notre propre timeID et port en retour pour que le site distant puisse nous identifier
+			fmt.Fprintf(conn, "ID:%d-PORT:%d\n", timeID, portBase+*id)
+
+			// La logique de back-connecting via 'go connectToPeer(remotePort)' n'est plus nécessaire ici.
+			// L'échange d'ID et l'ajout à connectedSites garantissent la connaissance mutuelle.
+			// Si le 'connectToPeer' initial échoue, les retries le géreront.
+
 		} else {
-			display_w("Unexpected message: " + msg)
+			display_w("Unexpected initial message (not ID-PORT format): " + msg + " from " + conn.RemoteAddr().String())
+			conn.Close() // Fermer la connexion si le format initial est incorrect
+			return
 		}
+	} else if err = scanner.Err(); err != nil {
+		display_e("Error reading initial message: " + err.Error())
+		conn.Close()
+		return
+	} else { // EOF ou connexion fermée avant le message initial
+		display_e("Connection closed before initial ID-PORT message from " + conn.RemoteAddr().String())
+		conn.Close()
+		return
 	}
+
+	// 	if strings.HasPrefix(msg, "ID:") {
+	// 		remoteSiteID, _ = strconv.Atoi(strings.TrimPrefix(msg, "ID:"))
+	// 		display_w("Received remote ID: " + strconv.Itoa(remoteSiteID) + " from " + conn.RemoteAddr().String())
+	// 		// We connect to the port if not already connected
+	// 		neiborTimerID := strconv.Itoa(remoteSiteID)
+	// 		if _, exists := connectedSites[neiborTimerID]; !exists {
+	// 			display_w("Back-connecting to " + neiborTimerID)
+	// 			go connectToPeer(port, remoteSiteID)
+	// 		}
+
+	// 	} else {
+	// 		display_w("Unexpected initial message (not an ID): " + msg + " from " + conn.RemoteAddr().String())
+	// 		conn.Close() // Fermer la connexion si le format initial est incorrect
+	// 		return
+	// 	}
+	// }
 
 	// Message processing loop
 	for scanner.Scan() {
@@ -173,10 +259,10 @@ func handleReceivingConnection(conn net.Conn) {
 
 					if current_duffusion_status.nbNeighbors > 0 {
 						// FIXME : send to all neibors except the parent
-						sndmsg := prepareWaveMessages(msg_diffusion_id, BlueMsg, id, "", msg_content)
+						sndmsg := prepareWaveMessages(msg_diffusion_id, BlueMsg, timeID, "", msg_content)
 						sendWaveMassages(connectedSites, msg_sender, sndmsg)
 					} else {
-						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, id, msg_sender, msg_content)
+						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, timeID, msg_sender, msg_content)
 						// send only to parent
 						conn := connectedSites[msg_sender]
 						_, err := (*conn).Write([]byte(sndmsg))
@@ -191,7 +277,7 @@ func handleReceivingConnection(conn net.Conn) {
 					// Has already received this message
 					// FIXME : send message to site's parent
 
-					sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, id, msg_sender, msg_content)
+					sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, timeID, msg_sender, msg_content)
 					// send only to parent
 					conn := connectedSites[msg_sender]
 					_, err := (*conn).Write([]byte(sndmsg))
@@ -204,12 +290,12 @@ func handleReceivingConnection(conn net.Conn) {
 			} else if msg_color == RedMsg {
 				current_duffusion_status.nbNeighbors -= 1
 				if current_duffusion_status.nbNeighbors == 0 {
-					if current_duffusion_status.parent == strconv.Itoa(*id) {
+					if current_duffusion_status.parent == strconv.Itoa(timeID) {
 						// send message to the controleur
 						fmt.Println(msg)
 					} else {
 						// forward the message to the wave initiator
-						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, id, current_duffusion_status.parent, msg_content)
+						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, timeID, current_duffusion_status.parent, msg_content)
 						// send only to parent
 						conn := connectedSites[current_duffusion_status.parent]
 						_, err := (*conn).Write([]byte(sndmsg))
@@ -241,18 +327,18 @@ func handleSendingConnection(conn net.Conn) {
 		count := len(DiffusionStatusMap)
 		message_id := count
 
-		diffusionId := fmt.Sprintf("%d:message_%d", *id, message_id) // FIXME: add the current port to ID
+		diffusionId := fmt.Sprintf("%d:message_%d", timeID, message_id) // FIXME: add the current port to ID
 		diffusionStatus := &DiffusionStatus{
-			sender_id:   strconv.Itoa(*id),
+			sender_id:   strconv.Itoa(timeID),
 			nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
-			parent:      strconv.Itoa(*id),
+			parent:      strconv.Itoa(timeID),
 		}
 
 		DiffusionStatusMap[diffusionId] = diffusionStatus
 
-		sndmsg := prepareWaveMessages(diffusionId, BlueMsg, id, "", msg)
+		sndmsg := prepareWaveMessages(diffusionId, BlueMsg, timeID, "", msg)
 
-		sendWaveMassages(connectedSites, strconv.Itoa(*id), sndmsg)
+		sendWaveMassages(connectedSites, strconv.Itoa(timeID), sndmsg)
 		mutex.Unlock()
 	}
 }
@@ -300,7 +386,7 @@ func connectToRandomTopology() {
 	if minConnections == maxConnections {
 		numConnections = minConnections
 	} else {
-		numConnections = rng.Intn(maxConnections - minConnections + 1) + minConnections
+		numConnections = rng.Intn(maxConnections-minConnections+1) + minConnections
 	}
 
 	display_w(fmt.Sprintf("Site %d attempting %d connections to existing sites", *id, numConnections))
@@ -333,7 +419,7 @@ func connectToRandomTopology() {
 		targetSite := existingSites[i]
 		targetPort := portBase + targetSite
 		display_e(fmt.Sprintf("Site %d connecting to Site %d (port %d)", *id, targetSite, targetPort))
-		go connectToPeer(targetPort)
+		go connectToPeer(targetPort, timeID)
 		// Small delay between connections to avoid overwhelming
 		time.Sleep(100 * time.Millisecond)
 	}
