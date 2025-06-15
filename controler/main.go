@@ -12,6 +12,8 @@ import (
 
 // message types
 const (
+	//message type to be received form network
+	KnownSiteListMessage string = "mks" // Messages list of sites to add to estampille tab
 
 	// message type to be sent/received to/from other sites
 	MsgRequestSc       string = "rqs" // request critical section
@@ -45,12 +47,14 @@ const (
 	VectorialClockField     string = "vcl" // vectorial clock value
 	cutNumber               string = "cnb" // number of next cut
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
+	KnownSiteList           string = "ksl" // list of sites to add to estampille tab
 )
 
 var (
-	id *int = flag.Int("id", 0, "id of site")
-	N  *int = flag.Int("N", 1, "number of sites")
-	s  int  = 0
+	// id *int = flag.Int("id", 0, "id of site")
+	id *string = flag.String("id", "0", "unique id of site (timestamp)") // get the timestamp id from site.sh
+	N  *int    = flag.Int("N", 1, "number of sites")
+	s  int     = 0
 )
 
 var text string = ""
@@ -63,28 +67,29 @@ var (
 func main() {
 	flag.Parse()
 
-	if *id < 0 || *id >= *N {
-		display_e("Invalid site id")
-		return
-	}
+	// if *id < 0 || *id >= *N {
+	// 	display_e("Invalid site id")
+	// 	return
+	// }
 
 	if *N < 1 {
 		display_e("Invalid number of sites")
 		return
 	}
 
-	var sndmsg string                          // message to be sent
-	var rcvtyp string                          // type of the received message
-	var rcvmsg string                          // received message
-	var vcrcv []int = make([]int, *N)          // received vectorial clock
-	var stamprcv int                           // received stamp
-	var idrcv int                              // id of the controller who sent the received message
-	var destidrcv int                          // id of the controller which the received message is destined to
-	var vectorialClock []int = make([]int, *N) // vectorial clock initialized to 0
-	var currentAction int = 0                  // action counter
+	var sndmsg string // message to be sent
+	var rcvtyp string // type of the received message
+	var rcvmsg string // received message
+	// var vcrcv []int = make([]int, *N)
+	var vcrcv map[string]int = make(map[string]int)          // received vectorial clock
+	var stamprcv int                                         // received stamp
+	var idrcv string                                         // id of the controller who sent the received message
+	var vectorialClock map[string]int = make(map[string]int) // vectorial clock initialized to 0
+	vectorialClock[*id] = 0
+	var currentAction int = 0 // action counter
 
-	tab := CreateDefaultTab(*N)
-	tabinit := CreateTabInit(*N)
+	tab := CreateDefaultTab(*id) //not a table but a StateMap : make(map[string]*StateObject)
+	tabinit := CreateTabInit()
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -115,20 +120,20 @@ func main() {
 		s_hrcv := findval(rcvmsg, StampField, false)
 		stamprcv, _ = strconv.Atoi(s_hrcv)
 
-		s_id := findval(rcvmsg, SiteIdField, false)
-		idrcv, _ = strconv.Atoi(s_id)
-		if idrcv < 0 || idrcv >= *N {
-			display_e("Invalid site id received")
-			continue
-		}
+		idrcv = findval(rcvmsg, SiteIdField, false)
+		// idrcv, _ = strconv.Atoi(s_id)
+		// if idrcv == *id {
+		// 	display_e("Invalid site id received")
+		// 	continue
+		// }
 
 		s_destid := findval(rcvmsg, SiteIdDestField, false)
-		destidrcv, _ = strconv.Atoi(s_destid)
+		// destidrcv, _ = strconv.Atoi(s_destid)
 
 		nbcut := findval(rcvmsg, cutNumber, false)
 
 		// if the message is a Receipt and is not for this site, ignore it
-		if rcvtyp != MsgReceiptSc || destidrcv == *id {
+		if rcvtyp != MsgReceiptSc || s_destid == *id {
 
 			// update the stamp of the site
 			s = resetStamp(s, stamprcv)
@@ -146,7 +151,7 @@ func main() {
 				}
 
 				// update the vectorial clock
-				vectorialClock = updateVectorialClock(vectorialClock, vcrcv)
+				vectorialClock = updateVectorialClock(vectorialClock, vcrcv, *id)
 				jsonVc, err = json.Marshal(vectorialClock)
 				if err != nil {
 					display_e("JSON encoding error: " + err.Error())
@@ -158,6 +163,19 @@ func main() {
 
 		// each message type will be processed differently
 		switch rcvtyp {
+		case KnownSiteListMessage:
+			var knownSitesReceived []string
+			knonwSite := findval(rcvmsg, KnownSiteList, false)
+
+			err := json.Unmarshal([]byte(knonwSite), &knownSitesReceived)
+			if err != nil {
+				fmt.Println("Erreur de décodage JSON :", err)
+				return
+			}
+
+			for _, site := range knownSitesReceived {
+				AddSiteToStateMap(tab, site)
+			}
 
 		// This message is sent by the site to request access to the critical section
 		// so that other sites cannot access it
@@ -169,7 +187,7 @@ func main() {
 
 			sndmsg = msg_format(TypeField, MsgRequestSc) +
 				msg_format(StampField, strconv.Itoa(s)) +
-				msg_format(SiteIdField, strconv.Itoa(*id)) +
+				msg_format(SiteIdField, *id) +
 				msg_format(VectorialClockField, string(jsonVc))
 			display_d("Requesting critical section")
 
@@ -185,7 +203,7 @@ func main() {
 			sndmsg = msg_format(TypeField, MsgReleaseSc) +
 				msg_format(StampField, strconv.Itoa(s)) +
 				msg_format(UptField, msg) +
-				msg_format(SiteIdField, strconv.Itoa(*id)) +
+				msg_format(SiteIdField, *id) +
 				msg_format(VectorialClockField, string(jsonVc))
 			display_d("Releasing critical section")
 
@@ -204,12 +222,12 @@ func main() {
 				// send receipt to the sender by the successor (ring topology)
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, strconv.Itoa(*id)) +
-					msg_format(SiteIdDestField, strconv.Itoa(idrcv)) +
+					msg_format(SiteIdField, *id) +
+					msg_format(SiteIdDestField, idrcv) +
 					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Sending receipt")
 
-				verifyScApproval(tab)
+				verifyScApproval(tab, *id)
 			}
 
 		// This message is sent by another controller to announce that the critical section has been released
@@ -229,21 +247,21 @@ func main() {
 					msg_format(UptField, findval(rcvmsg, UptField, true))
 				display_d("Sending update message to application")
 
-				verifyScApproval(tab)
+				verifyScApproval(tab, *id)
 			}
 
 		// This message is sent by another controller to give a receipt after receiving a previous message
 		case MsgReceiptSc:
 
 			if idrcv != *id {
-				if destidrcv == *id {
+				if s_destid == *id {
 					if tab[idrcv].Type != MsgRequestSc {
 						tab[idrcv].Type = MsgReceiptSc
 						tab[idrcv].Clock = stamprcv
 					}
 					display_d("Receipt received")
 
-					verifyScApproval(tab)
+					verifyScApproval(tab, *id)
 				} else {
 					// forward the message to the next site as id != destidrcv and id != idrcv
 					sndmsg = rcvmsg
@@ -265,7 +283,7 @@ func main() {
 			// An acknowledgment message is sent to every other controller
 			// it contains the number of lines in the local save file of this controller
 			sndmsg = msg_format(TypeField, MsgAcknowledgement) +
-				msg_format(SiteIdField, strconv.Itoa(*id)) +
+				msg_format(SiteIdField, *id) +
 				msg_format(UptField, strconv.Itoa(size))
 			display_d("Acknowledgement message sent")
 
@@ -279,7 +297,7 @@ func main() {
 			// in the "case" would have always return an empty string, so verifying here is very important.
 			display_d("Initial text receive")
 			text = findval(rcvmsg, UptField, true)
-			sndmsg = verifyIfMaxNbLinesSite(tabinit) // verify if the site has the max and return the message to send
+			sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
 			// if it is correct else return an empty string
 
 		// This message is received from every other controller and contains the number of lines in their own local save file
@@ -294,7 +312,7 @@ func main() {
 				}
 
 				display_d("Message acknowledgement received from site " +
-					strconv.Itoa(idrcv) +
+					idrcv +
 					" with " +
 					strconv.Itoa(size) +
 					" lines")
@@ -303,7 +321,7 @@ func main() {
 				display_d("Forwarding acknowledgement message")
 
 				tabinit[idrcv] = size
-				sndmsg = verifyIfMaxNbLinesSite(tabinit) // verify if the site has the max and return the message to send
+				sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
 				// if it is correct else return an empty string
 
 			}
@@ -313,7 +331,7 @@ func main() {
 		case MsgPropagateText:
 
 			if idrcv != *id {
-				display_d("Initialization text received from site " + strconv.Itoa(idrcv))
+				display_d("Initialization text received from site " + idrcv)
 				// forward the message to the next site as id != idrcv
 				fmt.Println(rcvmsg)
 				display_d("Forwarding initial text message")
@@ -348,14 +366,14 @@ func main() {
 			if err != nil {
 				display_e("Error : " + err.Error())
 			}
-			if nbvls < *N {
+			if nbvls < len(tab) {
 				if nbvls == 0 {
 					display_d("Cut message received from application")
 				} else {
 					display_d("Cut message received from a controler")
 				}
 
-				siteActionNumber := fmt.Sprintf("site_%d_action_%d", *id, currentAction+1)
+				siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
 
 				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
 				nbvls++

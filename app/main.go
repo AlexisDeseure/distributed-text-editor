@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"image/color"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"regexp"
 
 	"app/utils"
 
@@ -104,7 +104,7 @@ func main() {
 	go send(textArea)
 	go receive(textArea)
 
-	// Display the window
+	// Display the windownewSiteKnown
 	myWindow.ShowAndRun()
 }
 
@@ -278,73 +278,72 @@ func receive(textArea *widget.Entry) {
 
 // A function to initialize the UI
 func initUI() (fyne.Window, *widget.Entry) {
-    var content fyne.CanvasObject
+	var content fyne.CanvasObject
 
-    // Create the app with forced light theme
-    myApp := app.New()
-    myApp.Settings().SetTheme(&CustomTheme{})
+	// Create the app with forced light theme
+	myApp := app.New()
+	myApp.Settings().SetTheme(&CustomTheme{})
 
-    // Create the window
-    myWindow := myApp.NewWindow(*filename)
-    myWindow.Resize(fyne.NewSize(800, 600))
+	// Create the window
+	myWindow := myApp.NewWindow(*filename)
+	myWindow.Resize(fyne.NewSize(800, 600))
 
-    // Create the text area
-    textArea := widget.NewMultiLineEntry()
-    textArea.SetPlaceHolder("Write something...")
-    textArea.Wrapping = fyne.TextWrapWord
+	// Create the text area
+	textArea := widget.NewMultiLineEntry()
+	textArea.SetPlaceHolder("Write something...")
+	textArea.Wrapping = fyne.TextWrapWord
 
-    // Create a white background behind the text area
-    whiteBackground := canvas.NewRectangle(color.White)
-    whiteBackground.Resize(fyne.NewSize(800, 600)) // ensure it covers
+	// Create a white background behind the text area
+	whiteBackground := canvas.NewRectangle(color.White)
+	whiteBackground.Resize(fyne.NewSize(800, 600)) // ensure it covers
 
-    // Stack the white background and the text area
-    textContainer := container.NewStack(whiteBackground, textArea)
+	// Stack the white background and the text area
+	textContainer := container.NewStack(whiteBackground, textArea)
 
-    // Load the saved text
-    text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
-    if err != nil {
-        s_err := fmt.Sprintf("Error loading text from file: %v", err)
-        display_e(s_err)
-    }
-    textArea.SetText(text)
+	// Load the saved text
+	text, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
+	if err != nil {
+		s_err := fmt.Sprintf("Error loading text from file: %v", err)
+		display_e(s_err)
+	}
+	textArea.SetText(text)
 
-    // Scrollable area
-    scrollable := container.NewScroll(textContainer)
-    scrollable.SetMinSize(fyne.NewSize(600, 400))
+	// Scrollable area
+	scrollable := container.NewScroll(textContainer)
+	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
-    // "Cut" button
-    cutBtn := widget.NewButton("Cut", func() {
-        mutex.Lock()
-        defer mutex.Unlock()
-        cut = true
-    })
+	// "Cut" button
+	cutBtn := widget.NewButton("Cut", func() {
+		mutex.Lock()
+		defer mutex.Unlock()
+		cut = true
+	})
 
-    // Bottom of window depending on debug mode
-    if *debug {
-        saveBtn := widget.NewButton("Save", func() {
-            mutex.Lock()
-            defer mutex.Unlock()
-            save = true
-        })
-        bottomButtons := container.NewHBox(saveBtn, cutBtn)
-        content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
-    } else {
-        bottomButtons := container.NewHBox(cutBtn)
-        content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
-    }
+	// Bottom of window depending on debug mode
+	if *debug {
+		saveBtn := widget.NewButton("Save", func() {
+			mutex.Lock()
+			defer mutex.Unlock()
+			save = true
+		})
+		bottomButtons := container.NewHBox(saveBtn, cutBtn)
+		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
+	} else {
+		bottomButtons := container.NewHBox(cutBtn)
+		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
+	}
 
-    // Set the content
-    myWindow.SetContent(content)
+	// Set the content
+	myWindow.SetContent(content)
 
-    // Capture window close
-    myWindow.SetCloseIntercept(func() {
-        sndmsg := msg_format(TypeField, MsgAppDied)
-        fmt.Println(sndmsg)
-        myWindow.Close()
-    })
+	// Capture window close
+	myWindow.SetCloseIntercept(func() {
+		sndmsg := msg_format(TypeField, MsgAppDied)
+		fmt.Println(sndmsg)
+		myWindow.Close()
+	})
 
-
-    return myWindow, textArea
+	return myWindow, textArea
 }
 
 type CustomTheme struct{}

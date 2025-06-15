@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 )
 
@@ -31,7 +30,7 @@ func getLocalIP() string {
 func registerConn(addr string, conn net.Conn, connectionsMap *map[string]*net.Conn) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	if _, exists := (*connectionsMap)[addr]; !exists {
+	if _, exists := (*connectionsMap)[addr]; !exists { // the adress is the time ID
 		(*connectionsMap)[addr] = &conn
 	}
 }
@@ -117,10 +116,11 @@ func findval(msg string, key string, verbose bool) string {
 	return ""
 }
 
-func prepareWaveMessages(messageID string, color string, senderID int, receiverID string, msgContent string) string {
-	var sndmsg string = msg_format(DiffusionStatusID, messageID) +
+func prepareWaveMessages(messageID string, color string, senderID string, receiverID string, msgContent string) string {
+	var sndmsg string = msg_format(TypeField, DiffusionMessage) +
+		msg_format(DiffusionStatusID, messageID) +
 		msg_format(ColorDiffusion, color) +
-		msg_format(SiteIdField, strconv.Itoa(senderID)) +
+		msg_format(SiteIdField, senderID) +
 		msg_format(SiteIdDestField, receiverID) + // FIXE ME
 		msg_format(MessageContent, msgContent)
 
@@ -129,6 +129,7 @@ func prepareWaveMessages(messageID string, color string, senderID int, receiverI
 
 func sendWaveMessages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
 	for timerID, conn := range neighborhoods {
+		display_e("ID DU BUG : timerID " + timerID)
 		if conn != nil && *conn != nil {
 			if timerID != parent {
 				_, err := writeToConn(*conn, sndmsg)
