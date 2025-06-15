@@ -35,11 +35,11 @@ const (
 	MsgInitialText string = "txt" // Initial text when the app begins
 
 	// message types to be receive from controler
-	MsgAppStartSc    string = "ssa" // start critical section
-	MsgAppUpdate     string = "upa" // update critical section
-	MsgAppShallDie   string = "shd" // app shall die
-	MsgReturnNewText string = "ret" // return the new common text content to the site
-
+	MsgAppStartSc        string = "ssa" // start critical section
+	MsgAppUpdate         string = "upa" // update critical section
+	MsgAppShallDie       string = "shd" // app shall die
+	MsgReturnInitialText string = "ret" // return the initial common text content to the site
+	MsgReturnText        string = "ret2" // give the current text content to the site
 )
 
 // message fields
@@ -98,7 +98,7 @@ func main() {
 	lastText = textArea.Text
 
 	// Launch the initialization process to be sure each site has the same initial local save
-	unifyVersions(utils.LineCountSince(0, localSaveFilePath))
+	unifyVersions(textArea)
 
 	// Start send/receive routines
 	go send(textArea)
@@ -109,21 +109,51 @@ func main() {
 }
 
 // This function starts a cycle that gathers the most up-to-date version of the common text and propagates it to each site
-func unifyVersions(size int) {
-	sndmsg := msg_format(TypeField, MsgInitialSize) +
-		msg_format(UptField, strconv.Itoa(size))
-	fmt.Println(sndmsg) // send the lines count
+func unifyVersions(textArea *widget.Entry) {
+	reader := bufio.NewReader(os.Stdin)
 
-	content, err := os.ReadFile(localSaveFilePath)
-	if err != nil {
-		display_e("Error while reading log file: " + err.Error())
-		return
+	for {
+
+		rcvmsgRaw, err := reader.ReadString('\n')
+		if err != nil {
+			// display_e("Error reading message : " + err.Error())
+			continue
+		}
+		// delete last "\n"
+		rcvmsg := strings.TrimSuffix(rcvmsgRaw, "\n")
+		rcvtyp := findval(rcvmsg, TypeField, true)
+		if rcvtyp == "" {
+			continue
+		}
+		if rcvtyp == MsgReturnInitialText { // Receive a new text message
+
+			text := findval(rcvmsg, UptField, false)
+			if text != "" { // If the text is not empty, we are a secondary site so we need to update the local save file
+			// with the text received from the controller
+				display_d("Received initial message from controller, updating local save file as we are a secondary site")
+				original := strings.ReplaceAll(text, "↩", "\n")
+				// Erase the local save with the one received
+				err := os.WriteFile(localSaveFilePath, []byte(original), 0o644)
+				if err != nil {
+					display_e("Error while writing into log file: " + err.Error())
+				}
+
+				// Get the new content and replace the loacal save var + refresh UI
+				content, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
+				if err != nil {
+					display_e("Error while reading log file: " + err.Error())
+				}
+				fyne.Do(func() {
+					textArea.SetText(content)
+					textArea.Refresh()
+					lastText = content
+				})
+			} else { // If the text is empty, we are the first site so we can keep the current text area content
+				display_d("Received initial message from controller, no need to update local save file as we are the first site")
+			}
+			return // Exit the loop after receiving the initial text to go to the main loop and display the UI
+		}
 	}
-
-	// "\n" cannot be sent to the standard output without being misinterpreted
-	formatted := strings.ReplaceAll(string(content), "\n", "↩")
-	sndmsg = msg_format(TypeField, MsgInitialText) + msg_format(UptField, string(formatted))
-	fmt.Println(sndmsg) // send the content
 }
 
 // A goroutine to manage local text saving and and to send modifications to other sites via the controller
@@ -213,6 +243,18 @@ func receive(textArea *widget.Entry) {
 		}
 
 		switch rcvtyp {
+		case MsgReturnText: // Demand to return the current text content
+			content, err := os.ReadFile(localSaveFilePath)
+			if err != nil {
+				display_e("Error while reading log file: " + err.Error())
+				return
+			}
+
+			// "\n" cannot be sent to the standard output without being misinterpreted
+			formatted := strings.ReplaceAll(string(content), "\n", "↩")
+			sndmsg := msg_format(TypeField, MsgReturnText) + msg_format(UptField, string(formatted))
+			fmt.Println(sndmsg) // send the content
+   			display_d("Returning current shared local text content to controller")
 
 		case MsgAppStartSc: // Receive start critical section message
 
@@ -250,26 +292,6 @@ func receive(textArea *widget.Entry) {
 				fyne.CurrentApp().Driver().Quit()
 			}, true)
 
-		case MsgReturnNewText: // Receive a new text message
-
-			text := findval(rcvmsg, UptField, false)
-			original := strings.ReplaceAll(text, "↩", "\n")
-			// Erase the local save with the one received
-			err := os.WriteFile(localSaveFilePath, []byte(original), 0o644)
-			if err != nil {
-				display_e("Error while writing into log file: " + err.Error())
-			}
-
-			// Get the new content and replace the loacal save var + refresh UI
-			content, err := utils.GetUpdatedTextFromFile(0, "", localSaveFilePath)
-			if err != nil {
-				display_e("Error while reading log file: " + err.Error())
-			}
-			fyne.Do(func() {
-				textArea.SetText(content)
-				textArea.Refresh()
-				lastText = content
-			})
 		}
 		mutex.Unlock()
 		rcvmsg = ""

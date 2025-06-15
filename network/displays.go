@@ -18,13 +18,13 @@ var (
 )
 
 func display_d(what string) {
-	stderr.Printf("%s + [%d %d net] (%d) %s%s", cyan, *id, pid, s, what, raz)
+	stderr.Printf("%s + [%s %d net] %s%s", cyan, *id, pid, what, raz)
 }
 
 func display_w(what string) {
-	stderr.Printf("%s * [%d %d net] (%d) %s%s", orange, *id, pid, s, what, raz)
+	stderr.Printf("%s * [%s %d net] %s%s", orange, *id, pid, what, raz)
 }
 
 func display_e(what string) {
-	stderr.Printf("%s ! [%d %d net] (%d) %s%s", rouge, *id, pid, s, what, raz)
+	stderr.Printf("%s ! [%s %d net] %s%s", rouge, *id, pid, what, raz)
 }

@@ -28,15 +28,11 @@ func getLocalIP() string {
 }
 
 func registerConn(addr string, conn net.Conn, connectionsMap *map[string]*net.Conn) {
-	mutex.Lock()
-	defer mutex.Unlock()
 	if _, exists := (*connectionsMap)[addr]; !exists { // the adress is the time ID
 		(*connectionsMap)[addr] = &conn
 	}
 }
 func getAndRemoveConn(addr string, connectionsMap *map[string]*net.Conn) *net.Conn {
-	mutex.Lock()
-	defer mutex.Unlock()
 	if conn, exists := (*connectionsMap)[addr]; exists {
 		delete(*connectionsMap, addr)
 		return conn
@@ -45,16 +41,12 @@ func getAndRemoveConn(addr string, connectionsMap *map[string]*net.Conn) *net.Co
 }
 
 func unregisterAllConns(connectionsMap *map[string]*net.Conn) {
-	mutex.Lock()
-	defer mutex.Unlock()
 	for addr, conn := range *connectionsMap {
 		(*conn).Close()
 		delete(*connectionsMap, addr)
 	}
 }
 func addKnownSite(id string) {
-	mutex.Lock()
-	defer mutex.Unlock()
 	if !isKnownSite(id) {
 		knownSites = append(knownSites, id)
 	}
@@ -70,8 +62,6 @@ func isKnownSite(id string) bool {
 }
 
 func isConnected(addr string) bool {
-	mutex.Lock()
-	defer mutex.Unlock()
 	_, exists := connectedSites[addr]
 	return exists
 }

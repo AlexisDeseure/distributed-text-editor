@@ -13,7 +13,9 @@ import (
 // message types
 const (
 	//message type to be received form network
-	KnownSiteListMessage string = "mks" // Messages list of sites to add to estampille tab
+	KnownSiteListMessage  string = "mks" // Messages list of sites to add to estampille tab
+	InitializationMessage string = "ini" // Initialization message to set the initial state
+	GetSharedText         string = "gst" // Get the shared text from the controller
 
 	// message type to be sent/received to/from other sites
 	MsgRequestSc       string = "rqs" // request critical section
@@ -32,9 +34,10 @@ const (
 	MsgInitialText string = "txt" // give the initial local text of app when the app begins
 
 	// message type to be sent to application
-	MsgAppStartSc    string = "ssa" // start critical section
-	MsgAppUpdate     string = "upa" // update critical section
-	MsgReturnNewText string = "ret" // give the new initial common text content to the site
+	MsgAppStartSc        string = "ssa"  // start critical section
+	MsgAppUpdate         string = "upa"  // update critical section
+	MsgReturnInitialText string = "ret"  // give the initial common text content to the site
+	MsgReturnText        string = "ret2" // give the current text content to the site
 )
 
 // message fields
@@ -56,7 +59,7 @@ var (
 	s  int     = 0
 )
 
-var text string = ""
+// var text string = ""
 
 var (
 	outputDir        *string = flag.String("o", "./output", "output directory")
@@ -77,8 +80,8 @@ func main() {
 	vectorialClock[*id] = 0
 	var currentAction int = 0 // action counter
 
-	tab := CreateDefaultTab(*id) //not a table but a StateMap : make(map[string]*StateObject)
-	tabinit := CreateTabInit()
+	tab := CreateDefaultStateMap(*id) //not a table but a StateMap : make(map[string]*StateObject)
+	// tabinit := CreateTabInit()
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
@@ -107,7 +110,10 @@ func main() {
 		// if there is no "stp" in the message, stamprcv is 0 so new s will be stamp+1
 		// if there is "stp" in the message, s will be max(s, stamprcv) + 1
 		s_hrcv := findval(rcvmsg, StampField, false)
-		stamprcv, _ = strconv.Atoi(s_hrcv)
+		stamprcv, err = strconv.Atoi(s_hrcv)
+		if err != nil {
+			stamprcv = 0
+		}
 
 		idrcv = findval(rcvmsg, SiteIdField, false)
 		// idrcv, _ = strconv.Atoi(s_id)
@@ -118,8 +124,6 @@ func main() {
 
 		s_destid := findval(rcvmsg, SiteIdDestField, false)
 		// destidrcv, _ = strconv.Atoi(s_destid)
-
-		nbcut := findval(rcvmsg, cutNumber, false)
 
 		// if the message is a Receipt and is not for this site, ignore it
 		if rcvtyp != MsgReceiptSc || s_destid == *id {
@@ -163,8 +167,17 @@ func main() {
 			}
 
 			for _, site := range knownSitesReceived {
-				AddSiteToStateMap(tab, site)
+				AddSiteToStateMap(&tab, site)
 			}
+
+		case GetSharedText:
+			sndmsg = msg_format(TypeField, MsgReturnText)
+
+			display_d("Getting text from application")
+		
+		case MsgReturnText:
+			//todo
+
 
 		// This message is sent by the site to request access to the critical section
 		// so that other sites cannot access it
@@ -257,80 +270,103 @@ func main() {
 					display_d("Forwarding receipt message")
 				}
 			}
-
-		// This message is sent by the site and contains the number of lines in the local log file (save file)
-		case MsgInitialSize:
-
-			display_d("Initial size received")
-			msg := findval(rcvmsg, UptField, true)
-			size, err := strconv.Atoi(msg)
-			if err != nil {
-				display_e("Error while converting string to int: " + err.Error())
-			}
-			tabinit[*id] = size
-
-			// An acknowledgment message is sent to every other controller
-			// it contains the number of lines in the local save file of this controller
-			sndmsg = msg_format(TypeField, MsgAcknowledgement) +
-				msg_format(SiteIdField, *id) +
-				msg_format(UptField, strconv.Itoa(size))
-			display_d("Acknowledgement message sent")
-
-		// This message is sent by the site and contains each line stored in the local log file (save file)
-		case MsgInitialText:
-
-			// This message is always received after MsgInitialSize due to FIFO channels.
-			// Thus, verification is only performed here in cases where all sites have acknowledged
-			// their number of lines and this site has the maximum. If all the MsgAcknowledgement
-			// messages were received before the MsgInitialText message, the verification process
-			// in the "case" would have always return an empty string, so verifying here is very important.
-			display_d("Initial text receive")
-			text = findval(rcvmsg, UptField, true)
-			sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
-			// if it is correct else return an empty string
-
-		// This message is received from every other controller and contains the number of lines in their own local save file
-		case MsgAcknowledgement:
-
-			if idrcv != *id {
-
-				msg := findval(rcvmsg, UptField, true)
-				size, err := strconv.Atoi(msg)
+		case InitializationMessage:
+			// 		msg_format(UptField, originalText)
+			var knownSitesReceived []string
+			knownSite := findval(rcvmsg, KnownSiteList, true)
+			if knownSite != "" { // if the site enter in a network
+				display_d("Controller initialization message received as a secondary site")
+				err := json.Unmarshal([]byte(knownSite), &knownSitesReceived)
 				if err != nil {
-					display_e("Error while converting string to int: " + err.Error())
+					fmt.Println("Erreur de décodage JSON :", err)
+					return
 				}
 
-				display_d("Message acknowledgement received from site " +
-					idrcv +
-					" with " +
-					strconv.Itoa(size) +
-					" lines")
-				// forward the message to the next site as id != idrcv
-				fmt.Println(rcvmsg)
-				display_d("Forwarding acknowledgement message")
+				for _, site := range knownSitesReceived {
+					AddSiteToStateMap(&tab, site)
+				}
 
-				tabinit[idrcv] = size
-				sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
-				// if it is correct else return an empty string
-
-			}
-
-		// This message is sent by the controller with the longest local save file
-		// it contains the lines of its save file, to replace the save file of this one
-		case MsgPropagateText:
-
-			if idrcv != *id {
-				display_d("Initialization text received from site " + idrcv)
-				// forward the message to the next site as id != idrcv
-				fmt.Println(rcvmsg)
-				display_d("Forwarding initial text message")
-
-				text = findval(rcvmsg, UptField, false)
-
-				sndmsg = msg_format(TypeField, MsgReturnNewText) +
+				text := findval(rcvmsg, UptField, true)
+				sndmsg = msg_format(TypeField, MsgReturnInitialText) +
 					msg_format(UptField, text)
-				display_d("Sending initial text to app")
+			} else { // if the site is the first one to enter in the network : primary site
+				display_d("Controller initialization message received as a primary site")
+				sndmsg = msg_format(TypeField, MsgReturnInitialText)
 			}
+
+		// // This message is sent by the site and contains the number of lines in the local log file (save file)
+		// case MsgInitialSize:
+
+		// 	display_d("Initial size received")
+		// 	msg := findval(rcvmsg, UptField, true)
+		// 	size, err := strconv.Atoi(msg)
+		// 	if err != nil {
+		// 		display_e("Error while converting string to int: " + err.Error())
+		// 	}
+		// 	tabinit[*id] = size
+
+		// 	// An acknowledgment message is sent to every other controller
+		// 	// it contains the number of lines in the local save file of this controller
+		// 	sndmsg = msg_format(TypeField, MsgAcknowledgement) +
+		// 		msg_format(SiteIdField, *id) +
+		// 		msg_format(UptField, strconv.Itoa(size))
+		// 	display_d("Acknowledgement message sent")
+
+		// // This message is sent by the site and contains each line stored in the local log file (save file)
+		// case MsgInitialText:
+
+		// 	// This message is always received after MsgInitialSize due to FIFO channels.
+		// 	// Thus, verification is only performed here in cases where all sites have acknowledged
+		// 	// their number of lines and this site has the maximum. If all the MsgAcknowledgement
+		// 	// messages were received before the MsgInitialText message, the verification process
+		// 	// in the "case" would have always return an empty string, so verifying here is very important.
+		// 	display_d("Initial text receive")
+		// 	text = findval(rcvmsg, UptField, true)
+		// 	sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
+		// 	// if it is correct else return an empty string
+
+		// // This message is received from every other controller and contains the number of lines in their own local save file
+		// case MsgAcknowledgement:
+
+		// 	if idrcv != *id {
+
+		// 		msg := findval(rcvmsg, UptField, true)
+		// 		size, err := strconv.Atoi(msg)
+		// 		if err != nil {
+		// 			display_e("Error while converting string to int: " + err.Error())
+		// 		}
+
+		// 		display_d("Message acknowledgement received from site " +
+		// 			idrcv +
+		// 			" with " +
+		// 			strconv.Itoa(size) +
+		// 			" lines")
+		// 		// forward the message to the next site as id != idrcv
+		// 		fmt.Println(rcvmsg)
+		// 		display_d("Forwarding acknowledgement message")
+
+		// 		tabinit[idrcv] = size
+		// 		sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
+		// 		// if it is correct else return an empty string
+
+		// 	}
+
+		// // This message is sent by the controller with the longest local save file
+		// // it contains the lines of its save file, to replace the save file of this one
+		// case MsgPropagateText:
+
+		// 	if idrcv != *id {
+		// 		display_d("Initialization text received from site " + idrcv)
+		// 		// forward the message to the next site as id != idrcv
+		// 		fmt.Println(rcvmsg)
+		// 		display_d("Forwarding initial text message")
+
+		// 		text = findval(rcvmsg, UptField, false)
+
+		// 		sndmsg = msg_format(TypeField, MsgReturnNewText) +
+		// 			msg_format(UptField, text)
+		// 		display_d("Sending initial text to app")
+		// 	}
 
 		// This message is sent by the site when the user kills the window
 		case MsgAppDied:
@@ -350,7 +386,7 @@ func main() {
 		// This message is sent by the site to request a cut
 		// It is then propagated to other controllers
 		case MsgCut:
-
+			nbcut := findval(rcvmsg, cutNumber, false)
 			nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
 			if err != nil {
 				display_e("Error : " + err.Error())

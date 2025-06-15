@@ -29,12 +29,14 @@ var knownSites []string // contains the ids of known sites in the network
 
 // values
 const (
-	MsgAccessRequest     string = "maq"
-	MsgAccessGranted     string = "mag"
-	BlueMsg              string = "blu"
-	RedMsg               string = "red"
-	DiffusionMessage     string = "dif"
-	KnownSiteListMessage string = "mks" // Messages list of sites to add to estampille tab
+	MsgAccessRequest      string = "maq"
+	MsgAccessGranted      string = "mag"
+	GetSharedText         string = "gst"
+	BlueMsg               string = "blu"
+	RedMsg                string = "red"
+	DiffusionMessage      string = "dif"
+	KnownSiteListMessage  string = "mks" // Messages list of sites to add to estampille tab
+	InitializationMessage string = "ini" // Initialization message to set the initial state
 )
 
 // key
@@ -45,6 +47,7 @@ const (
 	DiffusionStatusID string = "dsid"
 	ColorDiffusion    string = "clr"
 	MessageContent    string = "mct"
+	UptField          string = "upt" // update text for the app
 	KnownSiteList     string = "ksl" // list of sites to add to estampille tab
 
 )
@@ -53,7 +56,6 @@ var (
 	id      *string = flag.String("id", "0", "unique id of site (timestamp)") // get the timestamp id from site.sh
 	port    *int    = flag.Int("port", 9000, "port of site (default is 9000)")
 	targets *string = flag.String("targets", "", "comma-separated list of targets (e.g., 'hostA:portA,hostB:portB')")
-	s       int     = 0
 	// ip      string  = getLocalIP()
 )
 
@@ -67,8 +69,10 @@ func main() {
 	go func() {
 		sig := <-sigs
 		display_w(fmt.Sprintf("Received signal: %s", sig))
+		mutex.Lock()
 		unregisterAllConns(&connectedSites)
 		unregisterAllConns(&connectedSitesWaitingAdmission)
+		mutex.Unlock()
 		display_w("All connections unregistered. Exiting.")
 		os.Exit(0)
 	}()
@@ -79,12 +83,13 @@ func main() {
 		display_d("Starting as a primary site, no targets specified.")
 		// Listens on its own port
 		go startTCPServer()
+		// Send the launching message to the controller
+		initMessage := msg_format(TypeField, InitializationMessage) +
+			msg_format(SiteIdField, *id)
+		fmt.Println(initMessage)
 
 		// Wait a bit to ensure connections are established
 		time.Sleep(1 * time.Second)
-
-		// Read stdin
-		go readController()
 
 	} else {
 		display_d("Starting as a secondary site, connecting to targets starting with " + targetsList[0])
@@ -93,8 +98,10 @@ func main() {
 		}
 	}
 
-	time.Sleep(5 * time.Second)
-	printConnectedSites()
+	go readController()
+
+	time.Sleep(5 * time.Second) //debug to remove or adjust to repeat it
+	printConnectedSites()       //debug to remove or adjust to repeat it
 
 	// Wait forever
 	select {}
@@ -116,7 +123,9 @@ func startTCPServer() {
 		}
 		addr := conn.RemoteAddr().String()
 		display_d("New connection from " + addr)
-		registerConn(addr, conn, &connectedSitesWaitingAdmission) //MODIFY??
+		mutex.Lock()
+		registerConn(addr, conn, &connectedSitesWaitingAdmission)
+		mutex.Unlock()
 		go readConn(conn, addr)
 	}
 }
@@ -124,9 +133,12 @@ func startTCPServer() {
 func connectToPeer(addr string) {
 
 	// Avoid connecting to the same peer multiple times
+	mutex.Lock() // we mutex.Lock() to ensure read safety
 	if isConnected(addr) {
+		mutex.Unlock()
 		return
 	}
+	mutex.Unlock()
 
 	// Try to connect with retries (for progressive joining)
 	maxRetries := 30
@@ -166,39 +178,40 @@ func connectToPeer(addr string) {
 		if msg_type == MsgAccessGranted {
 			senderId := findval(msg, SiteIdField, true)
 			knownSiteList := findval(msg, KnownSiteList, true)
-			//also send the known site of the sender
-			display_w("Access granted by " + addr + " (sender ID: " + senderId + ")")
-			mutex.Unlock()
-			addKnownSite(senderId)
-
-			//add the other site to known sites
-			registerConn(senderId, conn, &connectedSites)
-			sites := strings.Split(knownSiteList, ",")
-
-			for _, site := range sites {
-				if site != "" {
-					// add all the known site to the list
-					knownSites = append(knownSites, site)
+			originalText := findval(msg, UptField, true)
+			//also add the known site of the sender
+			if knownSiteList == "" { //correspond to case 2 : current site is already in the network
+				// so we already have the shared text and the known sites of the network
+				display_d("Already in the network, access granted by a new connection " + addr + " (sender ID: " + senderId + ")")
+			} else { // case 1 or 3 : we are a new site in the network
+				display_d("Access granted to the network by " + addr + " (sender ID: " + senderId + ")")
+				addKnownSite(senderId) //add the other site to known sites
+				sites := strings.Split(knownSiteList, ",")
+				for _, site := range sites {
+					if site != "" {
+						// add all the known site to the list
+						addKnownSite(site)
+					}
 				}
+				// Convert known site list into JSON tab
+				jsonknownSites, err := json.Marshal(knownSites)
+				if err != nil {
+					display_e("Erreur JSON :" + err.Error())
+					return
+				}
+				stringknownSites := string(jsonknownSites)
+				// send the known site list to the controleur
+				initMessage := msg_format(TypeField, InitializationMessage) +
+					msg_format(KnownSiteList, stringknownSites) +
+					msg_format(SiteIdField, *id) +
+					msg_format(UptField, originalText)
+				fmt.Println(initMessage)
 			}
-
-			// Convert known site list into JSON tab
-			jsonknownSites, err := json.Marshal(knownSites)
-			if err != nil {
-				fmt.Println("Erreur JSON :", err)
-				return
-			}
-			stringknownSites := string(jsonknownSites)
-
-			// send the known site list to the controleur
-			knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
-				msg_format(KnownSiteList, stringknownSites) +
-				msg_format(SiteIdField, *id)
-			fmt.Println(knownSiteMessage)
-
+			registerConn(senderId, conn, &connectedSites)
 			go readConn(conn, addr)
 			return
 		}
+		mutex.Unlock()
 	}
 }
 
@@ -216,10 +229,13 @@ func readConn(conn net.Conn, addr string) {
 		case MsgAccessRequest:
 			senderId := findval(msg, SiteIdField, true)
 			display_d("Received access request from " + addr + " (sender ID: " + senderId + ")")
-			if len(connectedSites) == 0 {
+			if len(connectedSites) == 0 { // case 1 : solo primary site
 				// If no connected sites, automatically grant access
 				display_w("No connected sites. Automatically granting access to " + addr + " (sender ID: " + senderId + ")")
-				mutex.Unlock()
+				getCurrentSharedTextMsg := msg_format(TypeField, GetSharedText) +
+					msg_format(SiteIdField, *id)
+				fmt.Println(getCurrentSharedTextMsg)
+				
 				_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
 				registerConn(senderId, conn, &connectedSites)
 				addKnownSite(senderId)
@@ -239,21 +255,19 @@ func readConn(conn net.Conn, addr string) {
 				// default send all the known site to be shure they are known by controleur
 				fmt.Println(knownSiteMessage)
 
-				mutex.Lock()
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
 					msg_format(SiteIdField, *id)
 				writeToConn(conn, sndmsg)
-			} else if isKnownSite(senderId) {
+
+			} else if isKnownSite(senderId) { // case 2 : known site : it is already in the network and have the shared text
 				// If the sender is a known site, grant access
 				display_w("Granting access to known site " + addr + " (sender ID: " + senderId + ")")
-				mutex.Unlock()
 				_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
 				registerConn(senderId, conn, &connectedSites)
-				mutex.Lock()
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
 					msg_format(SiteIdField, *id)
 				writeToConn(conn, sndmsg)
-			} else {
+			} else { // case 3 : classic admission
 				// todo wave for admission : exemple envoyer le message au controleur qui l'ajoute dans la
 				// file d'attente répartie et retourne une demande d'accès à la section critique : quand il l'obtient il pourra renvoyer
 				// un message de release avec potentiellement du texte et un nouveau champs iniquant l'ajout du site
@@ -345,29 +359,37 @@ func readController() {
 	for {
 		msg, err := reader.ReadString('\n')
 		if err != nil {
-			//display_e("Error reading message : " + err.Error())
+			// display_e("Error reading message : " + err.Error())
 			continue
 		}
+		msg = strings.TrimSuffix(msg, "\n")
 
-		// FIXME: transfer the message to next network without doing anything for now
-		// each message is transfered by wave
 		mutex.Lock()
+		rcvtype := findval(msg, TypeField, true)
 
-		count := len(DiffusionStatusMap)
-		message_id := count
+		switch rcvtype {
+		case MsgAccessRequest:
 
-		diffusionId := fmt.Sprintf("%s:message_%d", *id, message_id) // FIXME: add the current port to ID
-		diffusionStatus := &DiffusionStatus{
-			sender_id:   *id,
-			nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
-			parent:      *id,
+
+		default:
+			display_d("Received message from controller: " + msg)
+			// todo handle only specific messages to push to the network
+			// count := len(DiffusionStatusMap)
+			// message_id := count
+
+			// diffusionId := fmt.Sprintf("%s:message_%d", *id, message_id) // FIXME: add the current port to ID
+			// diffusionStatus := &DiffusionStatus{
+			// 	sender_id:   *id,
+			// 	nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
+			// 	parent:      *id,
+			// }
+
+			// DiffusionStatusMap[diffusionId] = diffusionStatus
+
+			// sndmsg := prepareWaveMessages(diffusionId, BlueMsg, *id, "", msg)
+
+			// sendWaveMessages(connectedSites, *id, sndmsg)
 		}
-
-		DiffusionStatusMap[diffusionId] = diffusionStatus
-
-		sndmsg := prepareWaveMessages(diffusionId, BlueMsg, *id, "", msg)
-
-		sendWaveMessages(connectedSites, *id, sndmsg)
 		mutex.Unlock()
 	}
 }

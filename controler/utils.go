@@ -90,7 +90,7 @@ func updateVectorialClock(localClock map[string]int, receivedClock map[string]in
 }
 
 // CreateDefaultTab initializes a Tab of length n with default type and zero clock
-func CreateDefaultTab(siteID string) StateMap {
+func CreateDefaultStateMap(siteID string) StateMap {
 	// arr := make(Tab, n)
 	// for i := range arr {
 	// 	arr[i] = TabElement{Type: MsgReleaseSc, Clock: 0}
@@ -101,11 +101,11 @@ func CreateDefaultTab(siteID string) StateMap {
 	return stateMap
 }
 
-func AddSiteToStateMap(stateMap StateMap, siteID string) {
-	if _, exists := stateMap[siteID]; !exists {
-		stateMap[siteID] = &StateObject{
+func AddSiteToStateMap(stateMap *StateMap, siteID string) {
+	if _, exists := (*stateMap)[siteID]; !exists {
+		(*stateMap)[siteID] = &StateObject{
 			Type:  MsgReleaseSc,
-			Clock: 0,
+			Clock: -1, // Initialize with -1 to indicate not set : to be sure we won't get the priority
 		}
 	}
 }
