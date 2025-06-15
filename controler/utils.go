@@ -125,30 +125,6 @@ func timestampComparison(a, b CompareElement) bool {
 	return false
 }
 
-// verifyIfMaxNbLinesSite checks if this site has the maximum lines and constructs propagation message
-func verifyIfMaxNbLinesSite(arr map[string]int, tab StateMap, myID string, currentText string) string {
-	if len(arr) < len(tab) {
-		return ""
-	}
-
-	var id_max string = ""
-	var v_max int = -1
-	for id, v := range arr {
-		if v > v_max {
-			v_max = v
-			id_max = id
-		}
-	}
-
-	if myID == id_max {
-		display_d("Sending the text from app because it has the maximum number of lines")
-		return msg_format(TypeField, MsgPropagateText) +
-			msg_format(SiteIdField, myID) +
-			msg_format(UptField, currentText)
-	} else {
-		return ""
-	}
-}
 
 // verifyScApproval checks if the local site can enter the critical section and signals approval
 func verifyScApproval(tab StateMap, myID string) {

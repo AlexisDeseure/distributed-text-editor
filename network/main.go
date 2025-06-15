@@ -21,10 +21,17 @@ type DiffusionStatus struct {
 	parent      string
 }
 
+type WaitingObject struct {
+	Conn *net.Conn
+	Addr string
+}
+type WaitingMap map[string]*WaitingObject
+
 var mutex = &sync.Mutex{}
 var DiffusionStatusMap = make(map[string]*DiffusionStatus)
-var connectedSites = make(map[string]*net.Conn)
-var connectedSitesWaitingAdmission = make(map[string]*net.Conn)
+var connectedSites = make(map[string]*net.Conn) // connections which are in the network
+var connectedSitesWaitingAdmission = make(map[string]*net.Conn) // connections waiting for admission
+var waitingConnections = make(WaitingMap) // connections waiting for processing (to be recuperated with both site id and address in the controller reading routine)
 var knownSites []string // contains the ids of known sites in the network
 
 // values
@@ -61,7 +68,6 @@ var (
 
 func main() {
 	flag.Parse()
-
 	// Setup signal handling
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -81,15 +87,11 @@ func main() {
 
 	if targetsList == nil {
 		display_d("Starting as a primary site, no targets specified.")
-		// Listens on its own port
-		go startTCPServer()
+		
 		// Send the launching message to the controller
 		initMessage := msg_format(TypeField, InitializationMessage) +
-			msg_format(SiteIdField, *id)
+			msg_format(SiteIdField, "") // convention for reception in app
 		fmt.Println(initMessage)
-
-		// Wait a bit to ensure connections are established
-		time.Sleep(1 * time.Second)
 
 	} else {
 		display_d("Starting as a secondary site, connecting to targets starting with " + targetsList[0])
@@ -98,10 +100,15 @@ func main() {
 		}
 	}
 
+	// Listens on its own port
+	go startTCPServer()
+	// Wait a bit to ensure connections are established
+	time.Sleep(1 * time.Second)
+
 	go readController()
 
-	time.Sleep(5 * time.Second) //debug to remove or adjust to repeat it
-	printConnectedSites()       //debug to remove or adjust to repeat it
+	// time.Sleep(5 * time.Second) //debug to remove or adjust to repeat it
+	// printConnectedSites()       //debug to remove or adjust to repeat it
 
 	// Wait forever
 	select {}
@@ -208,6 +215,7 @@ func connectToPeer(addr string) {
 				fmt.Println(initMessage)
 			}
 			registerConn(senderId, conn, &connectedSites)
+			mutex.Unlock()
 			go readConn(conn, addr)
 			return
 		}
@@ -232,33 +240,11 @@ func readConn(conn net.Conn, addr string) {
 			if len(connectedSites) == 0 { // case 1 : solo primary site
 				// If no connected sites, automatically grant access
 				display_w("No connected sites. Automatically granting access to " + addr + " (sender ID: " + senderId + ")")
+				addWaitingSiteMap(senderId, &conn, addr)
 				getCurrentSharedTextMsg := msg_format(TypeField, GetSharedText) +
-					msg_format(SiteIdField, *id)
+					msg_format(SiteIdField, senderId) // hear we pass the senderId to the new site to get it again when obtaining the text
 				fmt.Println(getCurrentSharedTextMsg)
 				
-				_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
-				registerConn(senderId, conn, &connectedSites)
-				addKnownSite(senderId)
-				// Send all the known site to the new site of the network
-				jsonknownSites, err := json.Marshal(knownSites)
-				if err != nil {
-					fmt.Println("Erreur JSON :", err)
-					return
-				}
-				stringknownSites := string(jsonknownSites)
-				knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
-					msg_format(KnownSiteList, stringknownSites) +
-					msg_format(SiteIdField, *id)
-				writeToConn(conn, knownSiteMessage)
-
-				// informer le controleur pour qu'il puisse l'ajouter dans le tableau des horloges
-				// default send all the known site to be shure they are known by controleur
-				fmt.Println(knownSiteMessage)
-
-				sndmsg := msg_format(TypeField, MsgAccessGranted) +
-					msg_format(SiteIdField, *id)
-				writeToConn(conn, sndmsg)
-
 			} else if isKnownSite(senderId) { // case 2 : known site : it is already in the network and have the shared text
 				// If the sender is a known site, grant access
 				display_w("Granting access to known site " + addr + " (sender ID: " + senderId + ")")
@@ -272,6 +258,9 @@ func readConn(conn net.Conn, addr string) {
 				// file d'attente répartie et retourne une demande d'accès à la section critique : quand il l'obtient il pourra renvoyer
 				// un message de release avec potentiellement du texte et un nouveau champs iniquant l'ajout du site
 			}
+
+
+
 		case DiffusionMessage:
 			msg_diffusion_id := findval(msg, DiffusionStatusID, false)
 			msg_color := findval(msg, ColorDiffusion, false)
@@ -368,7 +357,34 @@ func readController() {
 		rcvtype := findval(msg, TypeField, true)
 
 		switch rcvtype {
-		case MsgAccessRequest:
+		case GetSharedText: // The demand for the current shared text has been received (case 1)
+		    text := findval(msg, UptField, true)
+			senderId := findval(msg, SiteIdField, true)
+			addr := waitingConnections[senderId].Addr
+			conn := *waitingConnections[senderId].Conn
+			delete(waitingConnections, senderId) // remove the waiting connection
+			_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
+			registerConn(senderId, conn, &connectedSites)
+			addKnownSite(senderId)
+			// Send all the known site to the new site of the network
+			jsonknownSites, err := json.Marshal(knownSites)
+			if err != nil {
+				fmt.Println("Erreur JSON :", err)
+				return
+			}
+			stringknownSites := string(jsonknownSites)
+			knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
+				msg_format(KnownSiteList, stringknownSites) +
+				msg_format(SiteIdField, *id)
+
+			// default send all the known site to be shure they are known by controleur to add it in his clock map
+			fmt.Println(knownSiteMessage)
+
+			sndmsg := msg_format(TypeField, MsgAccessGranted) +
+				msg_format(SiteIdField, *id) + // we send our id to the site which asked to join the network
+				msg_format(KnownSiteList, stringknownSites) +
+				msg_format(UptField, text)
+			writeToConn(conn, sndmsg)
 
 
 		default:

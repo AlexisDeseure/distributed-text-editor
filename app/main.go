@@ -25,7 +25,7 @@ import (
 
 // message types
 const (
-
+	SiteIdField string = "sid" // site id of sender
 	// message types to be sent to controler
 	MsgAppRequest  string = "rqa" // request critical section
 	MsgAppRelease  string = "rla" // release critical section
@@ -35,10 +35,10 @@ const (
 	MsgInitialText string = "txt" // Initial text when the app begins
 
 	// message types to be receive from controler
-	MsgAppStartSc        string = "ssa" // start critical section
-	MsgAppUpdate         string = "upa" // update critical section
-	MsgAppShallDie       string = "shd" // app shall die
-	MsgReturnInitialText string = "ret" // return the initial common text content to the site
+	MsgAppStartSc        string = "ssa"  // start critical section
+	MsgAppUpdate         string = "upa"  // update critical section
+	MsgAppShallDie       string = "shd"  // app shall die
+	MsgReturnInitialText string = "ret"  // return the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
 )
 
@@ -59,7 +59,7 @@ const autoSaveInterval = 500 * time.Millisecond
 // const autoSaveInterval = 2 * time.Second
 
 var filename *string = flag.String("f", "New document", "name of the file to edit")
-var id *int = flag.Int("id", 0, "id of site")
+var id *string = flag.String("id", "0", "id of site")
 
 var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
 
@@ -84,7 +84,7 @@ var (
 func main() {
 	// Parse command line arguments
 	flag.Parse()
-	display_d("Starting app with id: " + strconv.Itoa(*id))
+	display_d("Starting app with id: " + *id)
 	// Sanitize filename by replacing spaces and special characters with "_"
 	reg := regexp.MustCompile("[^a-zA-Z0-9_-]+")
 	sanitizedFilename := reg.ReplaceAllString(*filename, "_")
@@ -113,7 +113,7 @@ func unifyVersions(textArea *widget.Entry) {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-
+		display_d("Waiting for initial message from controller...")
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
 			// display_e("Error reading message : " + err.Error())
@@ -125,11 +125,12 @@ func unifyVersions(textArea *widget.Entry) {
 		if rcvtyp == "" {
 			continue
 		}
-		if rcvtyp == MsgReturnInitialText { // Receive a new text message
+		if rcvtyp == MsgReturnInitialText { // Receive a new text message : corresponds to the initial text sent by the controller
 
 			text := findval(rcvmsg, UptField, false)
-			if text != "" { // If the text is not empty, we are a secondary site so we need to update the local save file
-			// with the text received from the controller
+			idrcv := findval(rcvmsg, SiteIdField, false)
+			if idrcv == *id { // If the text is not empty, we are a secondary site so we need to update the local save file
+				// with the text received from the controller
 				display_d("Received initial message from controller, updating local save file as we are a secondary site")
 				original := strings.ReplaceAll(text, "↩", "\n")
 				// Erase the local save with the one received
@@ -249,12 +250,14 @@ func receive(textArea *widget.Entry) {
 				display_e("Error while reading log file: " + err.Error())
 				return
 			}
-
+			senderId := findval(rcvmsg, SiteIdField, true)
 			// "\n" cannot be sent to the standard output without being misinterpreted
 			formatted := strings.ReplaceAll(string(content), "\n", "↩")
-			sndmsg := msg_format(TypeField, MsgReturnText) + msg_format(UptField, string(formatted))
+			sndmsg := msg_format(TypeField, MsgReturnText) + 
+				msg_format(UptField, string(formatted)) + 
+				msg_format(SiteIdField, senderId)
 			fmt.Println(sndmsg) // send the content
-   			display_d("Returning current shared local text content to controller")
+			display_d("Returning current shared local text content to controller")
 
 		case MsgAppStartSc: // Receive start critical section message
 

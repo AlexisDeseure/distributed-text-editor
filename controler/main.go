@@ -171,13 +171,18 @@ func main() {
 			}
 
 		case GetSharedText:
-			sndmsg = msg_format(TypeField, MsgReturnText)
+			sndmsg = msg_format(TypeField, MsgReturnText) +
+				msg_format(SiteIdField, idrcv)
 
 			display_d("Getting text from application")
 		
 		case MsgReturnText:
-			//todo
-
+		   // This message is received from the application
+		    text := findval(rcvmsg, UptField, true)
+			sndmsg = msg_format(TypeField, GetSharedText) +
+				msg_format(SiteIdField, idrcv) +
+				msg_format(UptField, text)
+			display_d("Returning text to network")
 
 		// This message is sent by the site to request access to the critical section
 		// so that other sites cannot access it
@@ -273,7 +278,7 @@ func main() {
 		case InitializationMessage:
 			// 		msg_format(UptField, originalText)
 			var knownSitesReceived []string
-			knownSite := findval(rcvmsg, KnownSiteList, true)
+			knownSite := findval(rcvmsg, KnownSiteList, false)
 			if knownSite != "" { // if the site enter in a network
 				display_d("Controller initialization message received as a secondary site")
 				err := json.Unmarshal([]byte(knownSite), &knownSitesReceived)
@@ -288,10 +293,12 @@ func main() {
 
 				text := findval(rcvmsg, UptField, true)
 				sndmsg = msg_format(TypeField, MsgReturnInitialText) +
+					msg_format(SiteIdField, idrcv) +
 					msg_format(UptField, text)
 			} else { // if the site is the first one to enter in the network : primary site
 				display_d("Controller initialization message received as a primary site")
-				sndmsg = msg_format(TypeField, MsgReturnInitialText)
+				sndmsg = msg_format(TypeField, MsgReturnInitialText) + 
+					msg_format(SiteIdField, idrcv)
 			}
 
 		// // This message is sent by the site and contains the number of lines in the local log file (save file)

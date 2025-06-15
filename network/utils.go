@@ -11,6 +11,13 @@ var (
 	keyvalsep = "`"
 )
 
+func addWaitingSiteMap(siteID string, conn *net.Conn, addr string) {
+	waitingConnections[siteID] = &WaitingObject{
+		Conn: conn,
+		Addr: addr,
+	}
+}
+
 func getLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {

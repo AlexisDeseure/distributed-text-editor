@@ -130,7 +130,7 @@ for i in $(seq 1 3); do
 done
 
 # start local network between app, controler and network
-"$PWD/build/network" -id "$TIMESTAMP_ID" "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" -port "$PORT" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
+"$PWD/build/network" -id "$TIMESTAMP_ID" -port $PORT "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
 "$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
 "$PWD/build/app" -id "$TIMESTAMP_ID" -o "$OUTPUTS_DIR" -f "$DOCUMENT_NAME" "-debug=${APP_DEBUG_VALUE}" < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
 
