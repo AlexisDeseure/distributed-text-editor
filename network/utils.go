@@ -129,11 +129,10 @@ func prepareWaveMessages(messageID string, color string, senderID string, receiv
 
 func sendWaveMessages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
 	for timerID, conn := range neighborhoods {
+		display_e("ID DU BUG : timerID " + timerID)
 		if conn != nil && *conn != nil {
 			if timerID != parent {
 				_, err := writeToConn(*conn, sndmsg)
-				display_e("Wave MESSAGE to " + timerID + ": " + err.Error())
-
 				if err != nil {
 					display_e("Error sending message to " + timerID + ": " + err.Error())
 					continue
