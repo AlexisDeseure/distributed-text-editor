@@ -101,7 +101,7 @@ cleanup () {
   killall cat 2> /dev/null
  
   # Suppression des tubes nommés
-  \rm -f $FIFO_DIR/${TIMESTAMP_ID}_in_* $FIFO_DIR/${TIMESTAMP_ID}_out_*
+  rm -f $FIFO_DIR/${TIMESTAMP_ID}_in_* $FIFO_DIR/${TIMESTAMP_ID}_out_*
 
   exit 0
 }
