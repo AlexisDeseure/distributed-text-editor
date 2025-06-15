@@ -45,7 +45,7 @@ const (
 )
 
 var (
-	id      *int    = flag.Int("id", 0, "id of site")
+	id      *string = flag.String("id", "0", "unique id of site (timestamp)") // get the timestamp id from site.sh
 	port    *int    = flag.Int("port", 9000, "port of site (default is 9000)")
 	targets *string = flag.String("targets", "", "comma-separated list of targets (e.g., 'hostA:portA,hostB:portB')")
 	s       int     = 0
@@ -84,7 +84,7 @@ func main() {
 	} else {
 		display_d("Starting as a secondary site, connecting to targets starting with " + targetsList[0])
 		for _, addr := range targetsList {
-			connectToPeer(addr)
+			connectToPeer(addr) // get the ID of the site that has been connected and etablish connection
 		}
 	}
 
@@ -145,10 +145,10 @@ func connectToPeer(addr string) {
 		display_e(fmt.Sprintf("Failed to connect to %s after %d attempts", addr, maxRetries))
 		return
 	}
-	
+
 	mutex.Lock()
 	accessRequestMsg := msg_format(TypeField, MsgAccessRequest) +
-		msg_format(SiteIdField, strconv.Itoa(*id))
+		msg_format(SiteIdField, *id)
 	writeToConn(conn, accessRequestMsg)
 	display_d("Connected to " + addr + ", access request demanded")
 	mutex.Unlock()
@@ -193,7 +193,7 @@ func readConn(conn net.Conn, addr string) {
 				addKnownSite(senderId) // TODO en informer le controleur pour qu'il puisse l'ajouter dans le tableau des horloges
 				mutex.Lock()
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
-					msg_format(SiteIdField, strconv.Itoa(*id))
+					msg_format(SiteIdField, *id)
 				writeToConn(conn, sndmsg)
 			} else if isKnownSite(senderId) {
 				// If the sender is a known site, grant access
@@ -203,7 +203,7 @@ func readConn(conn net.Conn, addr string) {
 				registerConn(senderId, conn, &connectedSites)
 				mutex.Lock()
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
-					msg_format(SiteIdField, strconv.Itoa(*id))
+					msg_format(SiteIdField, *id)
 				writeToConn(conn, sndmsg)
 			} else {
 				// todo wave for admission : exemple envoyer le message au controleur qui l'ajoute dans la
@@ -270,7 +270,7 @@ func readConn(conn net.Conn, addr string) {
 			} else if msg_color == RedMsg {
 				current_duffusion_status.nbNeighbors -= 1
 				if current_duffusion_status.nbNeighbors == 0 {
-					if current_duffusion_status.parent == strconv.Itoa(*id) {
+					if current_duffusion_status.parent == *id {
 						// send message to the controleur
 						fmt.Println(msg)
 					} else {
@@ -308,18 +308,18 @@ func readController() {
 		count := len(DiffusionStatusMap)
 		message_id := count
 
-		diffusionId := fmt.Sprintf("%d:message_%d", *id, message_id) // FIXME: add the current port to ID
+		diffusionId := fmt.Sprintf("%s:message_%d", *id, message_id) // FIXME: add the current port to ID
 		diffusionStatus := &DiffusionStatus{
-			sender_id:   strconv.Itoa(*id),
+			sender_id:   *id,
 			nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
-			parent:      strconv.Itoa(*id),
+			parent:      *id,
 		}
 
 		DiffusionStatusMap[diffusionId] = diffusionStatus
 
 		sndmsg := prepareWaveMessages(diffusionId, BlueMsg, *id, "", msg)
 
-		sendWaveMessages(connectedSites, strconv.Itoa(*id), sndmsg)
+		sendWaveMessages(connectedSites, *id, sndmsg)
 		mutex.Unlock()
 	}
 }

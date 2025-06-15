@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 )
 
@@ -117,10 +116,10 @@ func findval(msg string, key string, verbose bool) string {
 	return ""
 }
 
-func prepareWaveMessages(messageID string, color string, senderID int, receiverID string, msgContent string) string {
+func prepareWaveMessages(messageID string, color string, senderID string, receiverID string, msgContent string) string {
 	var sndmsg string = msg_format(DiffusionStatusID, messageID) +
 		msg_format(ColorDiffusion, color) +
-		msg_format(SiteIdField, strconv.Itoa(senderID)) +
+		msg_format(SiteIdField, senderID) +
 		msg_format(SiteIdDestField, receiverID) + // FIXE ME
 		msg_format(MessageContent, msgContent)
 

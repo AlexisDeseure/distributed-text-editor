@@ -20,12 +20,12 @@ type CompareElement struct {
 	Id    int
 }
 
-type TabElement struct {
+type StateObject struct {
 	Type  string
 	Clock int
 }
 
-type Tab []TabElement
+type StateMap make(map[string]*StateObject)
 
 // msg_format constructs a key-value string using predefined separators
 func msg_format(key string, val string) string {
@@ -81,12 +81,19 @@ func updateVectorialClock(oldVectorialClock []int, newVectorialClock []int) []in
 }
 
 // CreateDefaultTab initializes a Tab of length n with default type and zero clock
-func CreateDefaultTab(n int) Tab {
-	arr := make(Tab, n)
-	for i := range arr {
-		arr[i] = TabElement{Type: MsgReleaseSc, Clock: 0}
-	}
-	return arr
+func CreateDefaultTab(siteID string) StateMap {
+	// arr := make(Tab, n)
+	// for i := range arr {
+	// 	arr[i] = TabElement{Type: MsgReleaseSc, Clock: 0}
+	// }
+	// return arr
+	stateMap := make(map[string]*StateObject)
+	stateMap[siteID] = &StateObject{Type: MsgReleaseSc, Clock: 0}
+	return stateMap
+}
+
+func AddSiteToStateMap (siteID string) {
+	    if tab[*id] == nil { tab[*id] = &StateObject{Type: MsgReleaseSc, Clock: 0} }
 }
 
 // CreateTabInit returns an integer slice of length n filled with -1
@@ -132,7 +139,7 @@ func verifyIfMaxNbLinesSite(arr []int) string {
 }
 
 // verifyScApproval checks if the local site can enter the critical section and signals approval
-func verifyScApproval(tab Tab) {
+func verifyScApproval(tab StateMap) {
 	var sndmsg string
 	if tab[*id].Type == MsgRequestSc {
 

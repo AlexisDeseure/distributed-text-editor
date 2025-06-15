@@ -48,9 +48,10 @@ const (
 )
 
 var (
-	id *int = flag.Int("id", 0, "id of site")
-	N  *int = flag.Int("N", 1, "number of sites")
-	s  int  = 0
+	// id *int = flag.Int("id", 0, "id of site")
+	id *string = flag.String("id", "0", "unique id of site (timestamp)") // get the timestamp id from site.sh
+	N  *int    = flag.Int("N", 1, "number of sites")
+	s  int     = 0
 )
 
 var text string = ""
@@ -73,17 +74,18 @@ func main() {
 		return
 	}
 
-	var sndmsg string                          // message to be sent
-	var rcvtyp string                          // type of the received message
-	var rcvmsg string                          // received message
-	var vcrcv []int = make([]int, *N)          // received vectorial clock
-	var stamprcv int                           // received stamp
-	var idrcv int                              // id of the controller who sent the received message
-	var destidrcv int                          // id of the controller which the received message is destined to
-	var vectorialClock []int = make([]int, *N) // vectorial clock initialized to 0
-	var currentAction int = 0                  // action counter
+	var sndmsg string // message to be sent
+	var rcvtyp string // type of the received message
+	var rcvmsg string // received message
+	// var vcrcv []int = make([]int, *N)
+	var vcrcv map[string]int = make(map[string]int) // received vectorial clock
+	var stamprcv int                                // received stamp
+	var idrcv int                                   // id of the controller who sent the received message
+	var destidrcv int                               // id of the controller which the received message is destined to
+	var vectorialClock []int = make([]int, *N)      // vectorial clock initialized to 0
+	var currentAction int = 0                       // action counter
 
-	tab := CreateDefaultTab(*N)
+	tab := CreateDefaultTab(*id) //not a table but a StateMap : make(map[string]*StateObject)
 	tabinit := CreateTabInit(*N)
 	reader := bufio.NewReader(os.Stdin)
 
@@ -115,8 +117,8 @@ func main() {
 		s_hrcv := findval(rcvmsg, StampField, false)
 		stamprcv, _ = strconv.Atoi(s_hrcv)
 
-		s_id := findval(rcvmsg, SiteIdField, false)
-		idrcv, _ = strconv.Atoi(s_id)
+		idrcv := findval(rcvmsg, SiteIdField, false)
+		// idrcv, _ = strconv.Atoi(s_id)
 		if idrcv < 0 || idrcv >= *N {
 			display_e("Invalid site id received")
 			continue
