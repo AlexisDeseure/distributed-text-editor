@@ -28,12 +28,46 @@ func getLocalIP() string {
 	return "127.0.0.1" // fallback localhost
 }
 
-func registerConn(addr string, conn net.Conn) {
+func registerConn(addr string, conn net.Conn, connectionsMap *map[string]*net.Conn) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	if _, exists := connectedSites[addr]; !exists {
-		connectedSites[addr] = &conn
+	if _, exists := (*connectionsMap)[addr]; !exists {
+		(*connectionsMap)[addr] = &conn
 	}
+}
+func getAndRemoveConn(addr string, connectionsMap *map[string]*net.Conn) *net.Conn {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if conn, exists := (*connectionsMap)[addr]; exists {
+		delete(*connectionsMap, addr)
+		return conn
+	}
+	return nil
+}
+
+func unregisterAllConns(connectionsMap *map[string]*net.Conn) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	for addr, conn := range *connectionsMap {
+		(*conn).Close()
+		delete(*connectionsMap, addr)
+	}
+}
+func addKnownSite(id string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	if !isKnownSite(id) {
+		knownSites = append(knownSites, id)
+	}
+}
+
+func isKnownSite(id string) bool {
+	for _, site := range knownSites {
+		if site == id {
+			return true
+		}
+	}
+	return false
 }
 
 func isConnected(addr string) bool {
@@ -93,7 +127,7 @@ func prepareWaveMessages(messageID string, color string, senderID int, receiverI
 	return sndmsg
 }
 
-func sendWaveMassages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
+func sendWaveMessages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
 	for timerID, conn := range neighborhoods {
 		if conn != nil && *conn != nil {
 			if timerID != parent {
@@ -105,4 +139,35 @@ func sendWaveMassages(neighborhoods map[string]*net.Conn, parent string, sndmsg 
 			}
 		}
 	}
+}
+
+func processTargetFlags(targetAddrs string) []string {
+
+	var finalAddrs []string
+	if targetAddrs == "" {
+		return nil
+	}
+
+	targetAddrsList := strings.Split(targetAddrs, ",")
+
+	uniqueTargets := make(map[string]struct{}) // To store "host:port" strings for deduplication
+
+	for _, addr := range targetAddrsList {
+		_, err := net.ResolveTCPAddr("tcp", addr)
+		if err != nil {
+			display_e(fmt.Sprintf("Resolving target address %s failed: %v. Skipping this target.", addr, err))
+			continue
+		}
+		uniqueTargets[addr] = struct{}{}
+	}
+
+	if len(uniqueTargets) == 0 {
+		display_w("No valid target addresses provided. Using local IP as default.")
+		return nil
+	}
+	for addr := range uniqueTargets {
+		finalAddrs = append(finalAddrs, addr)
+	}
+
+	return finalAddrs
 }
