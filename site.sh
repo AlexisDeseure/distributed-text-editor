@@ -3,7 +3,7 @@
 # Default values
 DOCUMENT_NAME="New document"
 TARGET_ADDRESSES=""
-DEBUG_MODE=false
+DEBUG_MODE=""
 FIFO_DIR="/tmp"
 PORT=9000
 OUTPUTS_DIR="$PWD/output"
@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --debug)
-            DEBUG_MODE=true
+            DEBUG_MODE="-debug"
             shift
             ;;
         --fifo-dir)
@@ -129,14 +129,14 @@ for i in $(seq 1 3); do
     mkfifo "$FIFO_DIR/${TIMESTAMP_ID}_out_$i"
 done
 
-# start local network between app, controler and network
-"$PWD/build/network" -id "$TIMESTAMP_ID" "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" -port "$PORT" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
-"$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
-"$PWD/build/app" -id "$TIMESTAMP_ID" -f "$DOCUMENT_NAME" -debug "$DEBUG_MODE" < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
-
 # start tee and cat to redirect outputs
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_1" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_2" | tee "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_1" &
+
+# start local network between app, controler and network
+"$PWD/build/network" -id "$TIMESTAMP_ID" "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" -port "$PORT" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
+"$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
+"$PWD/build/app" -id "$TIMESTAMP_ID" -f "$DOCUMENT_NAME" $DEBUG_MODE < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
 
 wait

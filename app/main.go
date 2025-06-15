@@ -84,7 +84,7 @@ var (
 func main() {
 	// Parse command line arguments
 	flag.Parse()
-
+	display_d("Starting app with id: " + strconv.Itoa(*id))
 	// Sanitize filename by replacing spaces and special characters with "_"
 	reg := regexp.MustCompile("[^a-zA-Z0-9_-]+")
 	sanitizedFilename := reg.ReplaceAllString(*filename, "_")
@@ -342,6 +342,7 @@ func initUI() (fyne.Window, *widget.Entry) {
         fmt.Println(sndmsg)
         myWindow.Close()
     })
+
 
     return myWindow, textArea
 }
