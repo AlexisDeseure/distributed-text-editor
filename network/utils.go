@@ -117,7 +117,8 @@ func findval(msg string, key string, verbose bool) string {
 }
 
 func prepareWaveMessages(messageID string, color string, senderID string, receiverID string, msgContent string) string {
-	var sndmsg string = msg_format(DiffusionStatusID, messageID) +
+	var sndmsg string = msg_format(TypeField, DiffusionMessage) +
+		msg_format(DiffusionStatusID, messageID) +
 		msg_format(ColorDiffusion, color) +
 		msg_format(SiteIdField, senderID) +
 		msg_format(SiteIdDestField, receiverID) + // FIXE ME
@@ -131,6 +132,8 @@ func sendWaveMessages(neighborhoods map[string]*net.Conn, parent string, sndmsg 
 		if conn != nil && *conn != nil {
 			if timerID != parent {
 				_, err := writeToConn(*conn, sndmsg)
+				display_e("Wave MESSAGE to " + timerID + ": " + err.Error())
+
 				if err != nil {
 					display_e("Error sending message to " + timerID + ": " + err.Error())
 					continue
