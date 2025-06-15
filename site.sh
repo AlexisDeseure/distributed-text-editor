@@ -3,7 +3,7 @@
 # Default values
 DOCUMENT_NAME="New document"
 TARGET_ADDRESSES=""
-DEBUG_MODE=""
+APP_DEBUG_VALUE="false" # Changed from DEBUG_MODE="", and default to "false"
 FIFO_DIR="/tmp"
 PORT=9000
 OUTPUTS_DIR="$PWD/output"
@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --debug)
-            DEBUG_MODE="-debug"
+            APP_DEBUG_VALUE="true" # Set to "true" if --debug is passed
             shift
             ;;
         --fifo-dir)
@@ -74,7 +74,7 @@ fi
 echo "Configuration:"
 echo "  Document: $DOCUMENT_NAME"
 echo "  Targets: $TARGET_ADDRESSES"
-echo "  Debug mode: $DEBUG_MODE"
+echo "  Debug mode: $APP_DEBUG_VALUE" # Reflecting the new variable's meaning
 echo "  FIFO directory: $FIFO_DIR"
 echo "  Output directory: $OUTPUTS_DIR"
 echo "  Port: $PORT"
@@ -129,14 +129,15 @@ for i in $(seq 1 3); do
     mkfifo "$FIFO_DIR/${TIMESTAMP_ID}_out_$i"
 done
 
+# start local network between app, controler and network
+"$PWD/build/network" -id "$TIMESTAMP_ID" "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" -port "$PORT" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
+"$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
+"$PWD/build/app" -id "$TIMESTAMP_ID" -o "$OUTPUTS_DIR" -f "$DOCUMENT_NAME" "-debug=${APP_DEBUG_VALUE}" < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
+
 # start tee and cat to redirect outputs
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_1" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_2" | tee "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_1" &
 
-# start local network between app, controler and network
-"$PWD/build/network" -id "$TIMESTAMP_ID" "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" -port "$PORT" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
-"$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
-"$PWD/build/app" -id "$TIMESTAMP_ID" -f "$DOCUMENT_NAME" $DEBUG_MODE < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
 
 wait
