@@ -30,7 +30,7 @@ func getLocalIP() string {
 func registerConn(addr string, conn net.Conn, connectionsMap *map[string]*net.Conn) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	if _, exists := (*connectionsMap)[addr]; !exists {
+	if _, exists := (*connectionsMap)[addr]; !exists { // the adress is the time ID
 		(*connectionsMap)[addr] = &conn
 	}
 }

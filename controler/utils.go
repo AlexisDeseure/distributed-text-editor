@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -17,7 +15,7 @@ var (
 
 type CompareElement struct {
 	Clock int
-	Id    int
+	Id    string
 }
 
 type StateObject struct {
@@ -25,7 +23,7 @@ type StateObject struct {
 	Clock int
 }
 
-type StateMap make(map[string]*StateObject)
+type StateMap map[string]*StateObject
 
 // msg_format constructs a key-value string using predefined separators
 func msg_format(key string, val string) string {
@@ -72,12 +70,23 @@ func findval(msg string, key string, verbose bool) string {
 }
 
 // updateVectorialClock merges two vector clocks and increments the local entry
-func updateVectorialClock(oldVectorialClock []int, newVectorialClock []int) []int {
-	for i := range oldVectorialClock {
-		oldVectorialClock[i] = int(math.Max(float64(oldVectorialClock[i]), float64(newVectorialClock[i])))
+//
+//	func updateVectorialClock(oldVectorialClock []int, newVectorialClock []int) []int {
+//		for i := range oldVectorialClock {
+//			oldVectorialClock[i] = int(math.Max(float64(oldVectorialClock[i]), float64(newVectorialClock[i])))
+//		}
+//		oldVectorialClock[*id]++
+//		return oldVectorialClock
+//	}
+func updateVectorialClock(localClock map[string]int, receivedClock map[string]int, mySiteID string) map[string]int {
+	for siteID, receivedValue := range receivedClock {
+		if localValue, exists := localClock[siteID]; !exists || receivedValue > localValue {
+			localClock[siteID] = receivedValue
+		}
 	}
-	oldVectorialClock[*id]++
-	return oldVectorialClock
+	// Incrément du compteur local
+	localClock[mySiteID]++
+	return localClock
 }
 
 // CreateDefaultTab initializes a Tab of length n with default type and zero clock
@@ -92,17 +101,18 @@ func CreateDefaultTab(siteID string) StateMap {
 	return stateMap
 }
 
-func AddSiteToStateMap (siteID string) {
-	    if tab[*id] == nil { tab[*id] = &StateObject{Type: MsgReleaseSc, Clock: 0} }
+func AddSiteToStateMap(stateMap StateMap, siteID string) {
+	if _, exists := stateMap[siteID]; !exists {
+		stateMap[siteID] = &StateObject{
+			Type:  MsgReleaseSc,
+			Clock: 0,
+		}
+	}
 }
 
 // CreateTabInit returns an integer slice of length n filled with -1
-func CreateTabInit(n int) []int {
-	arr := make([]int, n)
-	for i := range arr {
-		arr[i] = -1
-	}
-	return arr
+func CreateTabInit() map[string]int {
+	return make(map[string]int)
 }
 
 // timestampComparison returns true if element a precedes b by clock, then id
@@ -116,38 +126,40 @@ func timestampComparison(a, b CompareElement) bool {
 }
 
 // verifyIfMaxNbLinesSite checks if this site has the maximum lines and constructs propagation message
-func verifyIfMaxNbLinesSite(arr []int) string {
-	var id_max int = 0
-	var v_max int = 0
+func verifyIfMaxNbLinesSite(arr map[string]int, tab StateMap, myID string, currentText string) string {
+	if len(arr) < len(tab) {
+		return ""
+	}
+
+	var id_max string = ""
+	var v_max int = -1
 	for id, v := range arr {
-		if v <= -1 {
-			return ""
-		}
 		if v > v_max {
 			v_max = v
 			id_max = id
 		}
 	}
-	if *id == id_max {
+
+	if myID == id_max {
 		display_d("Sending the text from app because it has the maximum number of lines")
 		return msg_format(TypeField, MsgPropagateText) +
-			msg_format(SiteIdField, strconv.Itoa(*id)) +
-			msg_format(UptField, text)
+			msg_format(SiteIdField, myID) +
+			msg_format(UptField, currentText)
 	} else {
 		return ""
 	}
 }
 
 // verifyScApproval checks if the local site can enter the critical section and signals approval
-func verifyScApproval(tab StateMap) {
+func verifyScApproval(tab StateMap, myID string) {
 	var sndmsg string
-	if tab[*id].Type == MsgRequestSc {
+	if tab[myID].Type == MsgRequestSc {
 
-		site_elem := CompareElement{Clock: tab[*id].Clock, Id: *id}
+		site_elem := CompareElement{Clock: tab[myID].Clock, Id: myID}
 
 		for i, el := range tab {
 			inter_elem := CompareElement{Clock: el.Clock, Id: i}
-			if i != *id && !timestampComparison(site_elem, inter_elem) {
+			if i != myID && !timestampComparison(site_elem, inter_elem) {
 				return
 			}
 		}
@@ -159,7 +171,7 @@ func verifyScApproval(tab StateMap) {
 }
 
 // saveCutJson records a vectorial clock under a given cut and action in a JSON file
-func saveCutJson(cutNumber string, vectorialClock []int, siteActionNumber string, filePath string) error {
+func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumber string, filePath string) error {
 	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("error opening/creating file: %w", err)

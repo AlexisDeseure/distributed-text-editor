@@ -2,12 +2,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -27,11 +29,12 @@ var knownSites []string // contains the ids of known sites in the network
 
 // values
 const (
-	MsgAccessRequest string = "maq"
-	MsgAccessGranted string = "mag"
-	BlueMsg          string = "blu"
-	RedMsg           string = "red"
-	DiffusionMessage string = "dif"
+	MsgAccessRequest     string = "maq"
+	MsgAccessGranted     string = "mag"
+	BlueMsg              string = "blu"
+	RedMsg               string = "red"
+	DiffusionMessage     string = "dif"
+	KnownSiteListMessage string = "mks" // Messages list of sites to add to estampille tab
 )
 
 // key
@@ -42,6 +45,8 @@ const (
 	DiffusionStatusID string = "dsid"
 	ColorDiffusion    string = "clr"
 	MessageContent    string = "mct"
+	KnownSiteList     string = "ksl" // list of sites to add to estampille tab
+
 )
 
 var (
@@ -111,7 +116,7 @@ func startTCPServer() {
 		}
 		addr := conn.RemoteAddr().String()
 		display_d("New connection from " + addr)
-		registerConn(addr, conn, &connectedSitesWaitingAdmission)
+		registerConn(addr, conn, &connectedSitesWaitingAdmission) //MODIFY??
 		go readConn(conn, addr)
 	}
 }
@@ -160,10 +165,37 @@ func connectToPeer(addr string) {
 		msg_type := findval(msg, TypeField, true)
 		if msg_type == MsgAccessGranted {
 			senderId := findval(msg, SiteIdField, true)
+			knownSiteList := findval(msg, KnownSiteList, true)
+			//also send the known site of the sender
 			display_w("Access granted by " + addr + " (sender ID: " + senderId + ")")
 			mutex.Unlock()
 			addKnownSite(senderId)
+
+			//add the other site to known sites
 			registerConn(senderId, conn, &connectedSites)
+			sites := strings.Split(knownSiteList, ",")
+
+			for _, site := range sites {
+				if site != "" {
+					// add all the known site to the list
+					knownSites = append(knownSites, site)
+				}
+			}
+
+			// Convert known site list into JSON tab
+			jsonknownSites, err := json.Marshal(knownSites)
+			if err != nil {
+				fmt.Println("Erreur JSON :", err)
+				return
+			}
+			stringknownSites := string(jsonknownSites)
+
+			// send the known site list to the controleur
+			knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
+				msg_format(KnownSiteList, stringknownSites) +
+				msg_format(SiteIdField, *id)
+			fmt.Println(knownSiteMessage)
+
 			go readConn(conn, addr)
 			return
 		}
@@ -190,7 +222,23 @@ func readConn(conn net.Conn, addr string) {
 				mutex.Unlock()
 				_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
 				registerConn(senderId, conn, &connectedSites)
-				addKnownSite(senderId) // TODO en informer le controleur pour qu'il puisse l'ajouter dans le tableau des horloges
+				addKnownSite(senderId)
+				// Send all the known site to the new site of the network
+				jsonknownSites, err := json.Marshal(knownSites)
+				if err != nil {
+					fmt.Println("Erreur JSON :", err)
+					return
+				}
+				stringknownSites := string(jsonknownSites)
+				knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
+					msg_format(KnownSiteList, stringknownSites) +
+					msg_format(SiteIdField, *id)
+				writeToConn(conn, knownSiteMessage)
+
+				// informer le controleur pour qu'il puisse l'ajouter dans le tableau des horloges
+				// default send all the known site to be shure they are known by controleur
+				fmt.Println(knownSiteMessage)
+
 				mutex.Lock()
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
 					msg_format(SiteIdField, *id)
