@@ -130,9 +130,13 @@ for i in $(seq 1 3); do
 done
 
 # start tee and cat to redirect outputs
-cat "$FIFO_DIR/${TIMESTAMP_ID}_out_1" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
-cat "$FIFO_DIR/${TIMESTAMP_ID}_out_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
-cat "$FIFO_DIR/${TIMESTAMP_ID}_out_2" | tee "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_1" &
+# Single multiplexer reading both outputs, concatenating safely
+{
+  tail -f "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
+  tail -f "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
+  wait
+} > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
+tee "$FIFO_DIR/${TIMESTAMP_ID}_in_3" < "$FIFO_DIR/${TIMESTAMP_ID}_out_2" > "$FIFO_DIR/${TIMESTAMP_ID}_in_1" &
 
 # start local network between app, controler and network
 "$PWD/build/network" -id "$TIMESTAMP_ID" "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" -port "$PORT" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
