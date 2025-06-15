@@ -139,5 +139,4 @@ cat "$FIFO_DIR/${TIMESTAMP_ID}_out_1" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_2" | tee "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_in_1" &
 
-
 wait

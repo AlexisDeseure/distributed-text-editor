@@ -53,7 +53,6 @@ const (
 var (
 	// id *int = flag.Int("id", 0, "id of site")
 	id *string = flag.String("id", "0", "unique id of site (timestamp)") // get the timestamp id from site.sh
-	N  *int    = flag.Int("N", 1, "number of sites")
 	s  int     = 0
 )
 
@@ -66,16 +65,6 @@ var (
 
 func main() {
 	flag.Parse()
-
-	// if *id < 0 || *id >= *N {
-	// 	display_e("Invalid site id")
-	// 	return
-	// }
-
-	if *N < 1 {
-		display_e("Invalid number of sites")
-		return
-	}
 
 	var sndmsg string // message to be sent
 	var rcvtyp string // type of the received message
