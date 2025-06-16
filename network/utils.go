@@ -54,6 +54,14 @@ func unregisterAllConns(connectionsMap *map[string]*net.Conn) {
 		delete(*connectionsMap, addr)
 	}
 }
+func delKnownSite(id string) {
+	for i, site := range knownSites {
+		if site == id {
+			knownSites = append(knownSites[:i], knownSites[i+1:]...)
+			return
+		}
+	}
+}
 func addKnownSite(id string) {
 	if !isKnownSite(id) {
 		knownSites = append(knownSites, id)

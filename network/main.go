@@ -27,6 +27,7 @@ type WaitingObject struct {
 }
 type WaitingMap map[string]*WaitingObject
 
+
 var mutex = &sync.Mutex{}
 var DiffusionStatusMap = make(map[string]*DiffusionStatus)
 var connectedSites = make(map[string]*net.Conn)                 // connections which are in the network
@@ -36,31 +37,38 @@ var knownSites []string                                         // contains the 
 
 // values
 const (
-	MsgAccessRequest       string = "maq"
-	MsgAccessGranted       string = "mag"
-	GetSharedText          string = "gst"
-	BlueMsg                string = "blu"
-	RedMsg                 string = "red"
-	DiffusionMessage       string = "dif"
-	KnownSiteListMessage   string = "mks" // Messages list of sites to add to estampille tab
-	InitializationMessage  string = "ini" // Initialization message to set the initial state
-	AddSiteCriticalSection string = "asl" // add site to critical section
-	MsgRequestSc           string = "rqs" // request critical section
-	MsgReleaseSc           string = "rls" // release critical section
-	MsgReceiptSc           string = "rcs" // receipt of critical section
+	// colors for diffusion
+	BlueMsg string = "blu"
+	RedMsg  string = "red"
+
+	// message types to interact with the network
+	MsgAccessRequest string = "maq" // request access to the network
+	MsgAccessGranted string = "mag" // access granted to the network
+	DiffusionMessage string = "dif" // diffusion message type
+
+	// messages types to interact with the controller
+	GetSharedText          string = "gst" // get the local shared text from the controller
+	KnownSiteListMessage   string = "mks" // Messages list of sites to add to estampille tab in the controller
+	InitializationMessage  string = "ini" // Initialization message to set the initial state to the controller
+	AddSiteCriticalSection string = "asl" // add site to critical section info to the controller
+	MsgRequestSc           string = "rqs" // request critical section (cf. controller)
+	MsgReleaseSc           string = "rls" // release critical section (cf. controller)
+	MsgReceiptSc           string = "rcs" // receipt of critical section (cf. controller)
 )
 
 // key
 const (
-	TypeField         string = "typ"
-	SiteIdField       string = "sid" // site id of sender
-	SiteIdDestField   string = "did" // site id of destination
-	DiffusionStatusID string = "dsid"
-	ColorDiffusion    string = "clr"
-	MessageContent    string = "mct"
-	UptField          string = "upt" // update text for the app
-	KnownSiteList     string = "ksl" // list of sites to add to estampille tab
-	SitesToAdd        string = "sta"
+	TypeField         string = "typ"  // type of message
+	SiteIdField       string = "sid"  // site id of sender
+	SiteIdDestField   string = "did"  // site id of destination
+	DiffusionStatusID string = "dsid" // id of the diffusion status
+	ColorDiffusion    string = "clr"  // color of the diffusion message
+	MessageContent    string = "mct"  // content of the message (used for diffusion)
+	UptField          string = "upt"  // update text from the app (json format)
+	KnownSiteList     string = "ksl"  // list of sites to add to estampille tab for the controller (json format)
+	SitesToAdd        string = "sta"  // list of sites to add to the next release message (json format)
+	CloseSiteField    string = "cls"  // close site field
+	CloseSiteAddress  string = "csa"  // addresses of the site to close (json format)
 )
 
 var (
@@ -190,8 +198,8 @@ func connectToPeer(addr string) {
 		msg_type := findval(msg, TypeField, true)
 		if msg_type == MsgAccessGranted {
 			senderId := findval(msg, SiteIdField, true)
-			knownSiteList := findval(msg, KnownSiteList, true)
-			originalText := findval(msg, UptField, true)
+			knownSiteList := findval(msg, KnownSiteList, false)
+			originalText := findval(msg, UptField, false)
 			//also add the known site of the sender
 			if knownSiteList == "" { //correspond to case 2 : current site is already in the network
 				// so we already have the shared text and the known sites of the network
@@ -325,7 +333,6 @@ func readConn(conn net.Conn, addr string) {
 							display_d("New sites added to the network by " + senderID + " : " + strings.Join(sitesToAddList, ", "))
 						}
 					}
-					fmt.Println(formated_msg_content) // transfer the message to the controller without the diffusion elements
 
 					// update diffusion status
 					current_diffusion_status.parent = senderID
@@ -344,6 +351,8 @@ func readConn(conn net.Conn, addr string) {
 							display_e("Error sending message to " + current_diffusion_status.parent + ": " + err.Error())
 							continue
 						}
+						processRemovedSite(formated_msg_content) // process the removed site if any
+						fmt.Println(formated_msg_content) // transfer the message to the controller without the diffusion elements
 						display_d("No more neighbors to forward the blue message, sending red message to parent: " + current_diffusion_status.parent)
 					}
 				} else {
@@ -363,6 +372,7 @@ func readConn(conn net.Conn, addr string) {
 				if current_diffusion_status.nbNeighbors <= 0 {
 					if current_diffusion_status.parent == *id {
 						// send message to the controleur
+						processRemovedSite(formated_msg_content) // process the removed site if any
 						fmt.Println(formated_msg_content)
 						display_d("END of diffusion for message ID " + msg_diffusion_id)
 					} else {
@@ -375,6 +385,8 @@ func readConn(conn net.Conn, addr string) {
 							display_e("Error sending message to " + current_diffusion_status.parent + ": " + err.Error())
 							continue
 						}
+						processRemovedSite(formated_msg_content) // process the removed site if any
+						fmt.Println(formated_msg_content) // transfer the message to the controller without the diffusion elements
 						display_d("No more neighbors from which to receive the red message, forwarding to parent: " + current_diffusion_status.parent)
 					}
 				}
@@ -445,9 +457,45 @@ func readController() {
 					display_d("No connected sites to send the message: " + msg)
 					// return the message to the controller
 					fmt.Println(msg)
+
+					if rcvtype == MsgReleaseSc {
+						needToClose := findval(msg, CloseSiteField, false)
+						needToCloseBool, _ := strconv.ParseBool(needToClose)
+						if needToCloseBool {
+							display_w("Application has been closed and site is alone in the network, closing connection")
+							unregisterAllConns(&connectedSites)
+							unregisterAllConns(&connectedSitesWaitingAdmission)
+							os.Exit(0)
+						}
+					}
 				} else {
 					count := len(DiffusionStatusMap)
 					diffusionId := fmt.Sprintf("%s:message_%d", *id, count)
+					if rcvtype == MsgReleaseSc {
+						needToClose := findval(msg, CloseSiteField, false)
+						needToCloseBool, _ := strconv.ParseBool(needToClose)
+						if needToCloseBool {
+							display_w("Application has been closed, site needs to inform the network")
+							
+							// Extract addresses from connected sites
+							addresses := make(map[string]string)
+							for idConn, conn := range connectedSites {
+								if conn != nil && idConn != *id {
+									addresses[idConn] = (*conn).RemoteAddr().String()
+								}
+							}
+							
+							// Serialize addresses to JSON
+							jsonAddresses, err := json.Marshal(addresses)
+							if err != nil {
+								display_e("Error serializing addresses: " + err.Error())
+							} else {
+								// Add the CloseSiteAddress field to the message
+								msg += msg_format(CloseSiteAddress, string(jsonAddresses))
+							}
+						}
+					}
+
 					diffusionStatus := &DiffusionStatus{
 						message:     msg,
 						nbNeighbors: len(connectedSites),
@@ -463,5 +511,45 @@ func readController() {
 
 		}
 		mutex.Unlock()
+	}
+}
+
+
+func processRemovedSite(formated_msg_content string) {
+	senderId := findval(formated_msg_content, SiteIdField, true)
+	closeSiteAddress := findval(formated_msg_content, CloseSiteAddress, false)
+	if closeSiteAddress != "" {
+		if *id == senderId { // if we are the sender, we need to close all connections
+			fmt.Println(formated_msg_content) // transfer the message to the controller 
+			// without the diffusion elements to inform it that it can close itself
+			display_w("Current site is closing, removing all connections")
+			unregisterAllConns(&connectedSites)
+			unregisterAllConns(&connectedSitesWaitingAdmission)
+			os.Exit(0)
+		} else {
+			display_w("Received close site message from " + senderId)
+			delKnownSite(senderId) // remove the site from the known sites
+		    if isConnected(senderId) {// if the site is connected to the current site, we need 
+			// to close the connection and recreate all the connections with his neighbors
+				conn := getAndRemoveConn(senderId, &connectedSites)
+				if conn != nil {
+					(*conn).Close()
+					display_w("Closed connection to " + senderId)
+				}
+				closeSiteAddresses := make(map[string]string)
+				err := json.Unmarshal([]byte(closeSiteAddress), &closeSiteAddresses)
+				if err != nil {
+					display_e("JSON decoding error for closeSiteAddress: " + err.Error())
+					return
+				}
+				
+				for siteId, addr := range closeSiteAddresses {
+					if siteId != *id && addr != "" {// do not connect to itself
+						display_w("Reconnecting to " + siteId + " at address " + addr)
+						go connectToPeer(addr) // reconnect to the site at the given address
+					}
+				}
+			}
+		}
 	}
 }

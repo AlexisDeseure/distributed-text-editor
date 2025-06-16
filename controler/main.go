@@ -8,37 +8,29 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // message types
 const (
-	//message type to be received form network
+	// message types to interact with the network
 	KnownSiteListMessage   string = "mks" // Messages list of sites to add to estampille tab
 	InitializationMessage  string = "ini" // Initialization message to set the initial state
 	GetSharedText          string = "gst" // Get the shared text from the controller
 	AddSiteCriticalSection string = "asl" // add site to critical section
+	MsgRequestSc           string = "rqs" // request critical section
+	MsgReleaseSc           string = "rls" // release critical section
+	MsgReceiptSc           string = "rcs" // receipt of critical section
+	MsgCut                 string = "cut" // give the vectorial clock value
 
-	// message type to be sent/received to/from other sites
-	MsgRequestSc       string = "rqs" // request critical section
-	MsgReleaseSc       string = "rls" // release critical section
-	MsgReceiptSc       string = "rcs" // receipt of critical section
-	MsgCut             string = "cut" // give the vectorial clock value
-	MsgAppShallDie     string = "shd" // indicates that app shall die
-	MsgAcknowledgement string = "ack" // tell the site's controler the number of lines of log file of sender id
-	MsgPropagateText   string = "prp" // give the correct initial text to the next controller
-
-	// message type to be receive from application
-	MsgAppRequest string = "rqa" // request critical section
-	MsgAppRelease string = "rla" // release critical section
-	MsgAppDied    string = "apd" // indicates that app died
-	// MsgInitialSize string = "siz" // give the number of lines in the log file
-	// MsgInitialText string = "txt" // give the initial local text of app when the app begins
-
-	// message type to be sent to application
+	// message types to interact with the application
+	MsgAppRequest        string = "rqa"  // request critical section
+	MsgAppRelease        string = "rla"  // release critical section
 	MsgAppStartSc        string = "ssa"  // start critical section
 	MsgAppUpdate         string = "upa"  // update critical section
 	MsgReturnInitialText string = "ret"  // give the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
+	MsgAppDied           string = "apd"  // notify the controller that the app has been closed
 )
 
 // message fields
@@ -53,6 +45,7 @@ const (
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 	KnownSiteList           string = "ksl" // list of sites to add to estampille tab
 	SitesToAdd              string = "sta" // list of sites to add to the next release message
+	CloseSiteField          string = "cls" // close site field
 )
 
 var (
@@ -80,8 +73,9 @@ func main() {
 	var idrcv string                                         // id of the controller who sent the received message
 	var vectorialClock map[string]int = make(map[string]int) // vectorial clock initialized to 0
 	vectorialClock[*id] = 0
-	var currentAction int = 0       // action counter
+	var currentAction int = 0              // action counter
 	var idToAddNetworkNextRelease []string // id of the site to add to the next release message
+	var applicationClosed bool = false      // flag to indicate if the application is closed
 
 	tab := CreateDefaultStateMap(*id) //not a table but a StateMap : make(map[string]*StateObject)
 	// tabinit := CreateTabInit()
@@ -207,15 +201,14 @@ func main() {
 					msg_format(SitesToAdd, string(singleSiteTabJson)) +
 					msg_format(UptField, text)
 			}
-			
-		
+
 		case AddSiteCriticalSection:
 			display_d("Add site to critical section message received : site will be added to the next release message")
 			idToAddNetworkNextRelease = append(idToAddNetworkNextRelease, idrcv)
 			if tab[*id].Type != MsgRequestSc {
 				tab[*id].Type = MsgRequestSc
 				tab[*id].Clock = s
-				
+
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
 					msg_format(SiteIdField, *id) +
@@ -241,7 +234,6 @@ func main() {
 		// This message is sent by the site to ask the release of the critical section
 		// so that other sites can access it again
 		case MsgAppRelease:
-
 			tab[*id].Type = MsgReleaseSc
 			tab[*id].Clock = s
 			msg := findval(rcvmsg, UptField, true)
@@ -257,7 +249,9 @@ func main() {
 				msg_format(UptField, msg) +
 				msg_format(SiteIdField, *id) +
 				msg_format(VectorialClockField, string(jsonVc)) +
-				msg_format(SitesToAdd, string(jsonIdToAdd))
+				msg_format(SitesToAdd, string(jsonIdToAdd)) +
+				msg_format(CloseSiteField, strconv.FormatBool(applicationClosed))
+				
 			display_d("Releasing critical section")
 			idToAddNetworkNextRelease = idToAddNetworkNextRelease[:0] // reset the list after use
 
@@ -288,12 +282,31 @@ func main() {
 				tab[idrcv].Clock = stamprcv
 				display_d("Release message received")
 
+				needToClose := findval(rcvmsg, CloseSiteField, false)
+				needToCloseBool, _ := strconv.ParseBool(needToClose)
+				if needToCloseBool {
+					display_d("Application with id " + idrcv + " has been closed, need to remove it from the state map")
+					delete(tab, idrcv) // remove the site from the state map
+				}
+
 				// send the updated message to the application
 				sndmsg = msg_format(TypeField, MsgAppUpdate) +
 					msg_format(UptField, findval(rcvmsg, UptField, true))
 				display_d("Sending update message to application")
 
 				verifyScApproval(tab, *id)
+			} else if applicationClosed { // if the app is closed and the message is from itself
+				// it means that the application has been closed and all sites have been notified
+				// so we can exit the application
+				needToClose := findval(rcvmsg, CloseSiteField, false)
+				needToCloseBool, _ := strconv.ParseBool(needToClose)
+				if needToCloseBool {
+					display_w("Application has been closed and all sites have been notified, informing app and exiting")
+					lastMessage := msg_format(TypeField, MsgAppDied)
+					fmt.Println(lastMessage)
+					time.Sleep(1 * time.Second) // wait for the application to process the message
+					os.Exit(0)
+				}
 			}
 
 		// This message is sent by another controller to give a receipt after receiving a previous message
@@ -311,7 +324,7 @@ func main() {
 			}
 
 		case InitializationMessage:
-			// 		msg_format(UptField, originalText)
+			// This message is sent by the network to initialize the site
 			var knownSitesReceived []string
 			knownSite := findval(rcvmsg, KnownSiteList, false)
 			if knownSite != "" { // if the site enter in a network
@@ -335,21 +348,21 @@ func main() {
 				sndmsg = msg_format(TypeField, MsgReturnInitialText) +
 					msg_format(SiteIdField, idrcv)
 			}
-
-		// This message is sent by the site when the user kills the window
 		case MsgAppDied:
+			applicationClosed = true
+			// Handle application termination
+			display_w("Application has been closed, need to inform the network when critical section access is obtained")
+			if tab[*id].Type != MsgRequestSc {
+				tab[*id].Type = MsgRequestSc
+				tab[*id].Clock = s
 
-			// Other controllers will receive a message so they can stop cleanly
-			sndmsg = msg_format(TypeField, MsgAppShallDie)
-			display_d("App died : sending message to other sites")
+				sndmsg = msg_format(TypeField, MsgRequestSc) +
+					msg_format(StampField, strconv.Itoa(s)) +
+					msg_format(SiteIdField, *id) +
+					msg_format(VectorialClockField, string(jsonVc))
+				display_d("Requesting critical section (to at least quit the application)")
+			}
 
-		// This message is sent by another controller and commands this one to stop
-		case MsgAppShallDie:
-			display_d("App died message received : forwarding it and closing controler")
-			// The message is forwarded to other controllers and to the site
-			fmt.Println(rcvmsg)
-			os.Stdout.Sync()
-			return
 
 		// This message is sent by the site to request a cut
 		// It is then propagated to other controllers

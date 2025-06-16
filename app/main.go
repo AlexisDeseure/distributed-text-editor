@@ -25,19 +25,15 @@ import (
 
 // message types
 const (
-	SiteIdField string = "sid" // site id of sender
 	// message types to be sent to controler
-	MsgAppRequest  string = "rqa" // request critical section
-	MsgAppRelease  string = "rla" // release critical section
-	MsgAppDied     string = "apd" // app died
-	MsgCut         string = "cut" // save the vectorial clock value
-	MsgInitialSize string = "siz" // number of lines in the log file
-	MsgInitialText string = "txt" // Initial text when the app begins
+	MsgAppRequest string = "rqa" // request critical section
+	MsgAppRelease string = "rla" // release critical section
+	MsgCut        string = "cut" // save the vectorial clock value
+	MsgAppDied    string = "apd" // notify the controller that the app has been closed
 
 	// message types to be receive from controler
 	MsgAppStartSc        string = "ssa"  // start critical section
 	MsgAppUpdate         string = "upa"  // update critical section
-	MsgAppShallDie       string = "shd"  // app shall die
 	MsgReturnInitialText string = "ret"  // return the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
 )
@@ -48,7 +44,7 @@ const (
 	UptField                string = "upt" // content of update for application
 	cutNumber               string = "cnb" // number of next cut
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
-
+	SiteIdField             string = "sid" // site id of sender
 )
 
 var outputDir *string = flag.String("o", "./output", "output directory")
@@ -79,6 +75,9 @@ var (
 var (
 	cut  bool = false //true if the cut button has been pressed
 	save bool = false //true if the save button has been pressed
+
+	// Channel to signal goroutines to stop
+	stopChan = make(chan struct{})
 )
 
 func main() {
@@ -162,7 +161,6 @@ func send(textArea *widget.Entry) {
 	var sndmsg string
 
 	for {
-
 		if !*debug { // Saving interval if we are not in debug mode
 			time.Sleep(autoSaveInterval)
 		}
@@ -203,7 +201,7 @@ func send(textArea *widget.Entry) {
 				msg_format(UptField, formattedText) +
 				msg_format(SiteIdField, "-1") // -1 means that the demand is not cibled to a specific site and can engender multiple new connections
 			fmt.Println(sndNewTextFormated)
-			
+
 			// send the critical section release message
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
@@ -253,6 +251,10 @@ func receive(textArea *widget.Entry) {
 		}
 
 		switch rcvtyp {
+
+		case MsgAppDied:
+			close(stopChan) // Signal to stop the application
+
 		case MsgReturnText: // Demand to return the current text content
 			senderId := findval(rcvmsg, SiteIdField, true)
 			formatted := getCurrentTextContentFormated()
@@ -291,12 +293,6 @@ func receive(textArea *widget.Entry) {
 			})
 
 			display_d("Critical section updated")
-
-		case MsgAppShallDie: // Receive a death message from controller so the app have to die
-
-			fyne.CurrentApp().Driver().DoFromGoroutine(func() {
-				fyne.CurrentApp().Driver().Quit()
-			}, true)
 
 		}
 		mutex.Unlock()
@@ -363,12 +359,31 @@ func initUI() (fyne.Window, *widget.Entry) {
 
 	// Set the content
 	myWindow.SetContent(content)
-
 	// Capture window close
 	myWindow.SetCloseIntercept(func() {
-		sndmsg := msg_format(TypeField, MsgAppDied)
-		fmt.Println(sndmsg)
-		myWindow.Close()
+		// Change the content of the main window to show closing message
+		message := widget.NewLabel("Application closing...\nPlease wait.")
+		message.Alignment = fyne.TextAlignCenter
+
+		// Center the message in the main window
+		closingContent := container.NewCenter(message)
+		myWindow.SetContent(closingContent)
+
+		// Send message to controller and clean shutdown
+		go func() {
+			display_w("Application closed by user, sending message to controller")
+			sndmsg := msg_format(TypeField, MsgAppDied)
+			fmt.Println(sndmsg)
+
+			// wait to receive the confirmation from the controller to close the window
+			<-stopChan
+
+			// Close the window properly
+			fyne.Do(func() {
+				myWindow.Close()
+			})
+			os.Exit(0) // Exit the application
+		}()
 	})
 
 	return myWindow, textArea
