@@ -18,21 +18,21 @@ func addWaitingSiteMap(siteID string, conn *net.Conn, addr string) {
 	}
 }
 
-func getLocalIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "127.0.0.1" // fallback localhost
-	}
-	for _, addr := range addrs {
-		// Check if the address is IP address and not loopback
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ip4 := ipnet.IP.To4(); ip4 != nil {
-				return ip4.String()
-			}
-		}
-	}
-	return "127.0.0.1" // fallback localhost
-}
+// func getLocalIP() string {
+// 	addrs, err := net.InterfaceAddrs()
+// 	if err != nil {
+// 		return "127.0.0.1" // fallback localhost
+// 	}
+// 	for _, addr := range addrs {
+// 		// Check if the address is IP address and not loopback
+// 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+// 			if ip4 := ipnet.IP.To4(); ip4 != nil {
+// 				return ip4.String()
+// 			}
+// 		}
+// 	}
+// 	return "127.0.0.1" // fallback localhost
+// }
 
 func registerConn(addr string, conn net.Conn, connectionsMap *map[string]*net.Conn) {
 	if _, exists := (*connectionsMap)[addr]; !exists { // the adress is the time ID

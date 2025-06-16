@@ -29,21 +29,25 @@ type WaitingMap map[string]*WaitingObject
 
 var mutex = &sync.Mutex{}
 var DiffusionStatusMap = make(map[string]*DiffusionStatus)
-var connectedSites = make(map[string]*net.Conn) // connections which are in the network
+var connectedSites = make(map[string]*net.Conn)                 // connections which are in the network
 var connectedSitesWaitingAdmission = make(map[string]*net.Conn) // connections waiting for admission
-var waitingConnections = make(WaitingMap) // connections waiting for processing (to be recuperated with both site id and address in the controller reading routine)
-var knownSites []string // contains the ids of known sites in the network
+var waitingConnections = make(WaitingMap)                       // connections waiting for processing (to be recuperated with both site id and address in the controller reading routine)
+var knownSites []string                                         // contains the ids of known sites in the network
 
 // values
 const (
-	MsgAccessRequest      string = "maq"
-	MsgAccessGranted      string = "mag"
-	GetSharedText         string = "gst"
-	BlueMsg               string = "blu"
-	RedMsg                string = "red"
-	DiffusionMessage      string = "dif"
-	KnownSiteListMessage  string = "mks" // Messages list of sites to add to estampille tab
-	InitializationMessage string = "ini" // Initialization message to set the initial state
+	MsgAccessRequest       string = "maq"
+	MsgAccessGranted       string = "mag"
+	GetSharedText          string = "gst"
+	BlueMsg                string = "blu"
+	RedMsg                 string = "red"
+	DiffusionMessage       string = "dif"
+	KnownSiteListMessage   string = "mks" // Messages list of sites to add to estampille tab
+	InitializationMessage  string = "ini" // Initialization message to set the initial state
+	AddSiteCriticalSection string = "asl" // add site to critical section
+	MsgRequestSc           string = "rqs" // request critical section
+	MsgReleaseSc           string = "rls" // release critical section
+	MsgReceiptSc           string = "rcs" // receipt of critical section
 )
 
 // key
@@ -56,7 +60,7 @@ const (
 	MessageContent    string = "mct"
 	UptField          string = "upt" // update text for the app
 	KnownSiteList     string = "ksl" // list of sites to add to estampille tab
-
+	SitesToAdd        string = "sta"
 )
 
 var (
@@ -87,7 +91,7 @@ func main() {
 
 	if targetsList == nil {
 		display_d("Starting as a primary site, no targets specified.")
-		
+
 		// Send the launching message to the controller
 		initMessage := msg_format(TypeField, InitializationMessage) +
 			msg_format(SiteIdField, "") // convention for reception in app
@@ -193,7 +197,12 @@ func connectToPeer(addr string) {
 			} else { // case 1 or 3 : we are a new site in the network
 				display_d("Access granted to the network by " + addr + " (sender ID: " + senderId + ")")
 				addKnownSite(senderId) //add the other site to known sites
-				sites := strings.Split(knownSiteList, ",")
+				sites := []string{} // initialize the list of sites
+				err := json.Unmarshal([]byte(knownSiteList), &sites)
+				if err != nil {
+					display_e("Erreur JSON :" + err.Error())
+					return
+				}
 				for _, site := range sites {
 					if site != "" {
 						// add all the known site to the list
@@ -239,15 +248,15 @@ func readConn(conn net.Conn, addr string) {
 			display_d("Received access request from " + addr + " (sender ID: " + senderId + ")")
 			if len(connectedSites) == 0 { // case 1 : solo primary site
 				// If no connected sites, automatically grant access
-				display_w("No connected sites. Automatically granting access to " + addr + " (sender ID: " + senderId + ")")
+				display_d("No connected sites. Automatically granting access to " + addr + " (sender ID: " + senderId + ") : waiting for application to send the shared text")
 				addWaitingSiteMap(senderId, &conn, addr)
 				getCurrentSharedTextMsg := msg_format(TypeField, GetSharedText) +
 					msg_format(SiteIdField, senderId) // hear we pass the senderId to the new site to get it again when obtaining the text
 				fmt.Println(getCurrentSharedTextMsg)
-				
+
 			} else if isKnownSite(senderId) { // case 2 : known site : it is already in the network and have the shared text
 				// If the sender is a known site, grant access
-				display_w("Granting access to known site " + addr + " (sender ID: " + senderId + ")")
+				display_d("Granting access to known site " + addr + " (sender ID: " + senderId + ")")
 				_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
 				registerConn(senderId, conn, &connectedSites)
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
@@ -257,9 +266,12 @@ func readConn(conn net.Conn, addr string) {
 				// todo wave for admission : exemple envoyer le message au controleur qui l'ajoute dans la
 				// file d'attente répartie et retourne une demande d'accès à la section critique : quand il l'obtient il pourra renvoyer
 				// un message de release avec potentiellement du texte et un nouveau champs iniquant l'ajout du site
+				display_d("Waiting for admission of " + addr + " by the network (sender ID: " + senderId + ")")
+				addWaitingSiteMap(senderId, &conn, addr)
+				sndmsg := msg_format(TypeField, AddSiteCriticalSection) +
+					msg_format(SiteIdField, senderId)
+				fmt.Println(sndmsg) // send the message to the controleur to add the site in the critical section
 			}
-
-
 
 		case DiffusionMessage:
 			msg_diffusion_id := findval(msg, DiffusionStatusID, false)
@@ -358,15 +370,18 @@ func readController() {
 
 		switch rcvtype {
 		case GetSharedText: // The demand for the current shared text has been received (case 1)
-		    text := findval(msg, UptField, true)
-			senderId := findval(msg, SiteIdField, true)
-			addr := waitingConnections[senderId].Addr
-			conn := *waitingConnections[senderId].Conn
-			delete(waitingConnections, senderId) // remove the waiting connection
-			_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
-			registerConn(senderId, conn, &connectedSites)
-			addKnownSite(senderId)
-			// Send all the known site to the new site of the network
+			text := findval(msg, UptField, true)
+			sitesToAdd := findval(msg, SitesToAdd, true)
+			sitesToAddList := []string{} // list of sites to add to the network
+			err := json.Unmarshal([]byte(sitesToAdd), &sitesToAddList)
+			if err != nil {
+				display_e("JSON decoding error for sitesToAdd: " + err.Error())
+				continue
+			}
+			for _, site := range sitesToAddList {
+				addKnownSite(site)
+			}
+			// Send all the known sites to the new sites of the network
 			jsonknownSites, err := json.Marshal(knownSites)
 			if err != nil {
 				fmt.Println("Erreur JSON :", err)
@@ -376,18 +391,27 @@ func readController() {
 			knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
 				msg_format(KnownSiteList, stringknownSites) +
 				msg_format(SiteIdField, *id)
-
 			// default send all the known site to be shure they are known by controleur to add it in his clock map
 			fmt.Println(knownSiteMessage)
 
-			sndmsg := msg_format(TypeField, MsgAccessGranted) +
-				msg_format(SiteIdField, *id) + // we send our id to the site which asked to join the network
-				msg_format(KnownSiteList, stringknownSites) +
-				msg_format(UptField, text)
-			writeToConn(conn, sndmsg)
-
+			for _, site := range sitesToAddList {
+				addr := waitingConnections[site].Addr
+				conn := *waitingConnections[site].Conn
+				delete(waitingConnections, site) // remove the waiting connection
+				_ = getAndRemoveConn(addr, &connectedSitesWaitingAdmission)
+				registerConn(site, conn, &connectedSites)
+				sndmsg := msg_format(TypeField, MsgAccessGranted) +
+					msg_format(SiteIdField, *id) + // we send our id to the site which asked to join the network
+					msg_format(KnownSiteList, stringknownSites) +
+					msg_format(UptField, text)
+				writeToConn(conn, sndmsg)
+			}
 
 		default:
+			if rcvtype == MsgReleaseSc || rcvtype == MsgReceiptSc || rcvtype == MsgRequestSc {
+				// Handle specific messages : only those which are aimed to the network
+				
+			}
 			display_d("Received message from controller: " + msg)
 			// todo handle only specific messages to push to the network
 			// count := len(DiffusionStatusMap)

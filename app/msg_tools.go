@@ -48,6 +48,17 @@ func findval(msg string, key string, verbose bool) string {
 	return ""
 }
 
+func getCurrentTextContentFormated() string {
+	content, err := os.ReadFile(localSaveFilePath)
+	if err != nil {
+		display_e(fmt.Sprintf("Failed to read file %s: %v", localSaveFilePath, err))
+		return ""
+	}
+	// "\n" cannot be sent to the standard output without being misinterpreted
+	formatted := strings.ReplaceAll(string(content), "\n", "↩")
+	return formatted
+}
+
 func GetNextCutNumber(filePath string) (string, error) {
 	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {

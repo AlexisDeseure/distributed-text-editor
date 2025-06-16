@@ -196,6 +196,15 @@ func send(textArea *widget.Entry) {
 				display_e("Error serializing diffs")
 				continue
 			}
+
+			// share the new text content with the controller in case of new site to be inserted
+			formattedText := getCurrentTextContentFormated()
+			sndNewTextFormated := msg_format(TypeField, MsgReturnText) +
+				msg_format(UptField, formattedText) +
+				msg_format(SiteIdField, "-1") // -1 means that the demand is not cibled to a specific site and can engender multiple new connections
+			fmt.Println(sndNewTextFormated)
+			
+			// send the critical section release message
 			sndmsg = msg_format(TypeField, MsgAppRelease) +
 				msg_format(UptField, string(sndmsgBytes))
 
@@ -245,16 +254,10 @@ func receive(textArea *widget.Entry) {
 
 		switch rcvtyp {
 		case MsgReturnText: // Demand to return the current text content
-			content, err := os.ReadFile(localSaveFilePath)
-			if err != nil {
-				display_e("Error while reading log file: " + err.Error())
-				return
-			}
 			senderId := findval(rcvmsg, SiteIdField, true)
-			// "\n" cannot be sent to the standard output without being misinterpreted
-			formatted := strings.ReplaceAll(string(content), "\n", "↩")
-			sndmsg := msg_format(TypeField, MsgReturnText) + 
-				msg_format(UptField, string(formatted)) + 
+			formatted := getCurrentTextContentFormated()
+			sndmsg := msg_format(TypeField, MsgReturnText) +
+				msg_format(UptField, formatted) +
 				msg_format(SiteIdField, senderId)
 			fmt.Println(sndmsg) // send the content
 			display_d("Returning current shared local text content to controller")

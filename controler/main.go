@@ -13,9 +13,10 @@ import (
 // message types
 const (
 	//message type to be received form network
-	KnownSiteListMessage  string = "mks" // Messages list of sites to add to estampille tab
-	InitializationMessage string = "ini" // Initialization message to set the initial state
-	GetSharedText         string = "gst" // Get the shared text from the controller
+	KnownSiteListMessage   string = "mks" // Messages list of sites to add to estampille tab
+	InitializationMessage  string = "ini" // Initialization message to set the initial state
+	GetSharedText          string = "gst" // Get the shared text from the controller
+	AddSiteCriticalSection string = "asl" // add site to critical section
 
 	// message type to be sent/received to/from other sites
 	MsgRequestSc       string = "rqs" // request critical section
@@ -27,11 +28,11 @@ const (
 	MsgPropagateText   string = "prp" // give the correct initial text to the next controller
 
 	// message type to be receive from application
-	MsgAppRequest  string = "rqa" // request critical section
-	MsgAppRelease  string = "rla" // release critical section
-	MsgAppDied     string = "apd" // indicates that app died
-	MsgInitialSize string = "siz" // give the number of lines in the log file
-	MsgInitialText string = "txt" // give the initial local text of app when the app begins
+	MsgAppRequest string = "rqa" // request critical section
+	MsgAppRelease string = "rla" // release critical section
+	MsgAppDied    string = "apd" // indicates that app died
+	// MsgInitialSize string = "siz" // give the number of lines in the log file
+	// MsgInitialText string = "txt" // give the initial local text of app when the app begins
 
 	// message type to be sent to application
 	MsgAppStartSc        string = "ssa"  // start critical section
@@ -51,6 +52,7 @@ const (
 	cutNumber               string = "cnb" // number of next cut
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 	KnownSiteList           string = "ksl" // list of sites to add to estampille tab
+	SitesToAdd              string = "sta" // list of sites to add to the next release message
 )
 
 var (
@@ -78,7 +80,8 @@ func main() {
 	var idrcv string                                         // id of the controller who sent the received message
 	var vectorialClock map[string]int = make(map[string]int) // vectorial clock initialized to 0
 	vectorialClock[*id] = 0
-	var currentAction int = 0 // action counter
+	var currentAction int = 0       // action counter
+	var idToAddNetworkNextRelease []string // id of the site to add to the next release message
 
 	tab := CreateDefaultStateMap(*id) //not a table but a StateMap : make(map[string]*StateObject)
 	// tabinit := CreateTabInit()
@@ -175,28 +178,65 @@ func main() {
 				msg_format(SiteIdField, idrcv)
 
 			display_d("Getting text from application")
-		
+
 		case MsgReturnText:
-		   // This message is received from the application
-		    text := findval(rcvmsg, UptField, true)
-			sndmsg = msg_format(TypeField, GetSharedText) +
-				msg_format(SiteIdField, idrcv) +
-				msg_format(UptField, text)
-			display_d("Returning text to network")
+			// This message is received from the application
+			text := findval(rcvmsg, UptField, true)
+			if idrcv == "-1" { // if idrcv is -1, it means that we need to share the return text to multiple sites : it is due to release of critical section
+				if len(idToAddNetworkNextRelease) > 0 { // if there are sites to add to the next release message
+					display_d("Returning text to network for one or more sites due to access to critical section")
+					idToAddNetworkNextReleaseJson, err := json.Marshal(idToAddNetworkNextRelease)
+					if err != nil {
+						display_e("JSON encoding error for idToAddNetworkNextRelease: " + err.Error())
+						continue
+					}
+					sndmsg = msg_format(TypeField, GetSharedText) +
+						msg_format(SitesToAdd, string(idToAddNetworkNextReleaseJson)) +
+						msg_format(UptField, text)
+				}
+			} else { // if idrcv is not -1, it means that the site wanting to join network is already known
+				display_d("Returning text to network for a single site")
+				singleSiteTab := []string{idrcv}
+				singleSiteTabJson, err := json.Marshal(singleSiteTab)
+				if err != nil {
+					display_e("JSON encoding error for singleSiteTab: " + err.Error())
+					continue
+				}
+
+				sndmsg = msg_format(TypeField, GetSharedText) +
+					msg_format(SitesToAdd, string(singleSiteTabJson)) +
+					msg_format(UptField, text)
+			}
+			
+		
+		case AddSiteCriticalSection:
+			display_d("Add site to critical section message received : site will be added to the next release message")
+			idToAddNetworkNextRelease = append(idToAddNetworkNextRelease, idrcv)
+			if tab[*id].Type != MsgRequestSc {
+				tab[*id].Type = MsgRequestSc
+				tab[*id].Clock = s
+				
+				sndmsg = msg_format(TypeField, MsgRequestSc) +
+					msg_format(StampField, strconv.Itoa(s)) +
+					msg_format(SiteIdField, *id) +
+					msg_format(VectorialClockField, string(jsonVc))
+				display_d("Requesting critical section (to at least add site to network)")
+			}
 
 		// This message is sent by the site to request access to the critical section
 		// so that other sites cannot access it
 		case MsgAppRequest:
-
-			tab[*id].Type = MsgRequestSc
-			tab[*id].Clock = s
 			display_d("Request message received from application")
+			if tab[*id].Type != MsgRequestSc {
+				tab[*id].Type = MsgRequestSc
+				tab[*id].Clock = s
 
-			sndmsg = msg_format(TypeField, MsgRequestSc) +
-				msg_format(StampField, strconv.Itoa(s)) +
-				msg_format(SiteIdField, *id) +
-				msg_format(VectorialClockField, string(jsonVc))
-			display_d("Requesting critical section")
+				sndmsg = msg_format(TypeField, MsgRequestSc) +
+					msg_format(StampField, strconv.Itoa(s)) +
+					msg_format(SiteIdField, *id) +
+					msg_format(VectorialClockField, string(jsonVc))
+				display_d("Requesting critical section (to at least send modification in shared text)")
+			}
 
 		// This message is sent by the site to ask the release of the critical section
 		// so that other sites can access it again
@@ -207,12 +247,19 @@ func main() {
 			msg := findval(rcvmsg, UptField, true)
 			display_d("Release message received from application")
 
+			jsonIdToAdd, err := json.Marshal(idToAddNetworkNextRelease)
+			if err != nil {
+				display_e("JSON encoding error for idToAddNetworkNextRelease: " + err.Error())
+			}
+
 			sndmsg = msg_format(TypeField, MsgReleaseSc) +
 				msg_format(StampField, strconv.Itoa(s)) +
 				msg_format(UptField, msg) +
 				msg_format(SiteIdField, *id) +
-				msg_format(VectorialClockField, string(jsonVc))
+				msg_format(VectorialClockField, string(jsonVc)) +
+				msg_format(SitesToAdd, string(jsonIdToAdd))
 			display_d("Releasing critical section")
+			idToAddNetworkNextRelease = idToAddNetworkNextRelease[:0] // reset the list after use
 
 		// This message is sent by another controller to announce that the critical section is temporarily locked
 		case MsgRequestSc:
@@ -297,7 +344,7 @@ func main() {
 					msg_format(UptField, text)
 			} else { // if the site is the first one to enter in the network : primary site
 				display_d("Controller initialization message received as a primary site")
-				sndmsg = msg_format(TypeField, MsgReturnInitialText) + 
+				sndmsg = msg_format(TypeField, MsgReturnInitialText) +
 					msg_format(SiteIdField, idrcv)
 			}
 
