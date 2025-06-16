@@ -3,7 +3,6 @@ go 1.24.2
 use (
 	./app
 	./controler
+	./graph_generator
 	./network
-	./study
-	./test_graph
 )

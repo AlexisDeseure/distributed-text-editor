@@ -108,6 +108,7 @@ go work use
 go build -o "$PWD/build/network" ./network
 go build -o "$PWD/build/controler" ./controler
 go build -o "$PWD/build/app" ./app
+go build -o "$PWD/build/graph_generator" ./graph_generator
 
 if [ $? -ne 0 ]; then
     echo "Error: Failed to build executables"
@@ -218,7 +219,7 @@ for ((i=0; i<NUM_SITES; i++)); do
     fi
     
     # Build and execute site.sh command
-    site_cmd="./site.sh --id \"$site_id\" --document \"$site_id\" --port $port --fifo-dir \"$FIFO_DIR\" --output-dir \"$OUTPUTS_DIR\" --already-built"
+    site_cmd="bash ./site.sh --id \"$site_id\" --document \"$site_id\" --port $port --fifo-dir \"$FIFO_DIR\" --output-dir \"$OUTPUTS_DIR\" --already-built"
     
     if [ ! -z "$targets" ]; then
         site_cmd="$site_cmd --targets \"$targets\""
@@ -272,104 +273,6 @@ done
 
 echo ""
 echo "Generating network topology graph..."
-cat > "$OUTPUTS_DIR/generate_graph.go" << 'EOF'
-package main
-
-import (
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"strings"
-
-	"github.com/emicklei/dot"
-)
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run generate_graph.go <output_file> [matrix_data]")
-		os.Exit(1)
-	}
-	
-	outputFile := os.Args[1]
-	
-	var matrixData string
-	if len(os.Args) >= 3 {
-		matrixData = os.Args[2]
-	} else {
-		// Read from stdin
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			fmt.Printf("Error reading from stdin: %v\n", err)
-			os.Exit(1)
-		}
-		matrixData = string(data)
-	}
-	
-	// Parse matrix data
-	lines := strings.Split(strings.TrimSpace(matrixData), "\n")
-	n := len(lines)
-	
-	matrix := make([][]int, n)
-	for i := range matrix {
-		matrix[i] = make([]int, n)
-		values := strings.Fields(lines[i])
-		for j, val := range values {
-			if val == "1" {
-				matrix[i][j] = 1
-			}
-		}
-	}
-	
-	g := dot.NewGraph(dot.Undirected)
-	nodes := make([]dot.Node, n)
-	
-	// Get site IDs from environment variable
-	siteIdsStr := os.Getenv("SITE_IDS_FOR_GRAPH")
-	fmt.Printf("DEBUG: SITE_IDS_FOR_GRAPH env var: '%s'\n", siteIdsStr)
-	
-	var siteIds []string
-	if siteIdsStr != "" {
-		siteIds = strings.Split(siteIdsStr, ",")
-		fmt.Printf("DEBUG: Parsed %d site IDs\n", len(siteIds))
-		for idx, id := range siteIds {
-			fmt.Printf("DEBUG: Site %d ID: '%s'\n", idx, id)
-		}
-	}
-	
-	for i := range matrix {
-		var nodeName string
-		if i < len(siteIds) && siteIds[i] != "" {
-			nodeName = siteIds[i]
-			fmt.Printf("DEBUG: Using site ID '%s' for node %d\n", nodeName, i)
-		} else {
-			nodeName = fmt.Sprintf("Site_%d", i)
-			fmt.Printf("DEBUG: Using default name '%s' for node %d\n", nodeName, i)
-		}
-		nodes[i] = g.Node(nodeName)
-	}
-
-	for i := 0; i < len(matrix); i++ {
-		for j := i + 1; j < len(matrix); j++ {
-			if matrix[i][j] != 0 {
-				g.Edge(nodes[i], nodes[j])
-			}
-		}
-	}
-
-	// Create the PNG file using dot
-	cmd := exec.Command("dot", "-Tpng", "-o", outputFile)
-	cmd.Stdin = strings.NewReader(g.String())
-
-	err := cmd.Run()
-	if err != nil {
-		fmt.Printf("Error creating PNG: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Graph generated successfully in %s\n", outputFile)
-}
-EOF
 
 # Prepare matrix data for graph generation
 matrix_data=""
@@ -393,18 +296,8 @@ done
 export SITE_IDS_FOR_GRAPH="$site_ids_joined"
 echo "DEBUG: Exporting SITE_IDS_FOR_GRAPH: ${SITE_IDS_FOR_GRAPH}"
 
-# Generate the graph
-cd "$OUTPUTS_DIR"
-go mod init graph_generator 2>/dev/null || true
-go get github.com/emicklei/dot 2>/dev/null || true
-
-# Pass matrix data via stdin instead of command line argument
-echo "$matrix_data" | SITE_IDS_FOR_GRAPH="${SITE_IDS_FOR_GRAPH}" go run generate_graph.go "network_topology.png"
-
-# Clean up generated Go files
-rm -f generate_graph.go go.mod go.sum
-
-cd - > /dev/null
+# Use the pre-built graph generator executable
+echo "$matrix_data" | SITE_IDS_FOR_GRAPH="${SITE_IDS_FOR_GRAPH}" "$PWD/build/graph_generator" "$OUTPUTS_DIR/network_topology.png"
 
 echo "Network topology graph created: $OUTPUTS_DIR/network_topology.png"
 
