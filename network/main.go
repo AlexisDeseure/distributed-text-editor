@@ -102,6 +102,11 @@ func main() {
 		for _, addr := range targetsList {
 			connectToPeer(addr) // get the ID of the site that has been connected and etablish connection
 		}
+		if len(connectedSites) == 0 {
+			display_e("No connections established. Exiting.")
+			os.Exit(1)
+		}
+
 	}
 
 	// Listens on its own port
@@ -122,7 +127,7 @@ func startTCPServer() {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
 		display_e("Server error: " + err.Error())
-		return
+		os.Exit(1)
 	}
 	display_d("Listening on port " + strconv.Itoa(*port) + "...")
 
@@ -197,7 +202,7 @@ func connectToPeer(addr string) {
 			} else { // case 1 or 3 : we are a new site in the network
 				display_d("Access granted to the network by " + addr + " (sender ID: " + senderId + ")")
 				addKnownSite(senderId) //add the other site to known sites
-				sites := []string{} // initialize the list of sites
+				sites := []string{}    // initialize the list of sites
 				err := json.Unmarshal([]byte(knownSiteList), &sites)
 				if err != nil {
 					display_e("Erreur JSON :" + err.Error())
@@ -409,8 +414,12 @@ func readController() {
 
 		default:
 			if rcvtype == MsgReleaseSc || rcvtype == MsgReceiptSc || rcvtype == MsgRequestSc {
-				// Handle specific messages : only those which are aimed to the network
-				
+				if len(connectedSites) == 0 {
+					display_d("No connected sites to send the message: " + msg)
+					// return the message to the controller
+					fmt.Println(msg)
+				}
+
 			}
 			display_d("Received message from controller: " + msg)
 			// todo handle only specific messages to push to the network

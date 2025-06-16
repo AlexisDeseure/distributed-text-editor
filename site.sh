@@ -11,6 +11,11 @@ OUTPUTS_DIR="$PWD/output"
 TIMESTAMP_ID=$(date +%s%N)
 ALREADY_BUILT=0
 
+# Process IDs for the components
+NETWORK_PID=""
+CONTROLER_PID=""
+APP_PID=""
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -85,20 +90,25 @@ echo ""
 # handle fyne error (UTF-8 locales)
 export LANG=en_US.UTF-8
 
+
 cleanup () {
   
-  # Suppression des processus de l'application app
-  killall app 2> /dev/null
-
-  # Suppression des processus de l'application ctl
-  killall controler 2> /dev/null
-
-  # Suppression des processus de l'application network
-  killall network 2> /dev/null
- 
-  # Suppression des processus tee et cat
-  killall tee 2> /dev/null
-  killall cat 2> /dev/null
+  echo "Cleaning up process group for instance $TIMESTAMP_ID..."
+  
+  # Kill all processes in the current instance
+  if [ ! -z "$NETWORK_PID" ]; then
+    kill $NETWORK_PID 2> /dev/null
+  fi
+  if [ ! -z "$CONTROLER_PID" ]; then
+    kill $CONTROLER_PID 2> /dev/null
+  fi
+  if [ ! -z "$APP_PID" ]; then
+    kill $APP_PID 2> /dev/null
+  fi
+  
+  #  Kill all processes with the timestamp ID prefix
+  pkill -f "${TIMESTAMP_ID}_" 2> /dev/null
+  
  
   # Suppression des tubes nommés
   rm -f $FIFO_DIR/${TIMESTAMP_ID}_in_* $FIFO_DIR/${TIMESTAMP_ID}_out_*
@@ -131,8 +141,11 @@ done
 
 # start local network between app, controler and network
 "$PWD/build/network" -id "$TIMESTAMP_ID" -port $PORT "$FLAG_TARGET_ADDRESSES" "$TARGET_ADDRESSES" < "$FIFO_DIR/${TIMESTAMP_ID}_in_1" > "$FIFO_DIR/${TIMESTAMP_ID}_out_1" &
+NETWORK_PID=$!
 "$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
+CONTROLER_PID=$!
 "$PWD/build/app" -id "$TIMESTAMP_ID" -o "$OUTPUTS_DIR" -f "$DOCUMENT_NAME" "-debug=${APP_DEBUG_VALUE}" < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
+APP_PID=$!
 
 # start tee and cat to redirect outputs
 cat "$FIFO_DIR/${TIMESTAMP_ID}_out_1" > "$FIFO_DIR/${TIMESTAMP_ID}_in_2" &

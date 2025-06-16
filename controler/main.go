@@ -281,8 +281,8 @@ func main() {
 					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Sending receipt")
 
-				verifyScApproval(tab, *id)
 			}
+			verifyScApproval(tab, *id) // outside the if to work when the site is alone in the network
 
 		// This message is sent by another controller to announce that the critical section has been released
 		case MsgReleaseSc:
