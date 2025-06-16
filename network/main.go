@@ -155,7 +155,7 @@ func connectToPeer(addr string) {
 
 	// Try to connect with retries (for progressive joining)
 	maxRetries := 30
-	retryDelay := 500 * time.Millisecond
+	retryDelay := 1000 * time.Millisecond
 	var conn net.Conn
 	var err error
 	for attempt := 0; attempt < maxRetries; attempt++ {

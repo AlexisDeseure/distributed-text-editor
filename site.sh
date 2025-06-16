@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Default values
-DOCUMENT_NAME="New document"
 TARGET_ADDRESSES=""
 APP_DEBUG_VALUE="false" # Changed from DEBUG_MODE="", and default to "false"
 FIFO_DIR="/tmp"
@@ -10,6 +9,7 @@ OUTPUTS_DIR="$PWD/output"
 # nano timestamp for id 
 TIMESTAMP_ID=$(date +%s%N)
 ALREADY_BUILT=0
+DOCUMENT_NAME="New document - $TIMESTAMP_ID"
 
 # Process IDs for the components
 NETWORK_PID=""
@@ -21,6 +21,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --document|-d)
             DOCUMENT_NAME="$2"
+            shift 2
+            ;;
+        --id)
+            TIMESTAMP_ID="$2"
             shift 2
             ;;
         --targets|-t)
