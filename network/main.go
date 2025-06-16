@@ -273,7 +273,6 @@ func readConn(conn net.Conn, addr string) {
 					msg_format(SiteIdField, senderId)
 				fmt.Println(sndmsg) // send the message to the controleur to add the site in the critical section
 			}
-
 		case DiffusionMessage:
 
 			msg_diffusion_id := findval(msg, DiffusionStatusID, false)
@@ -284,7 +283,7 @@ func readConn(conn net.Conn, addr string) {
 			current_diffusion_status := DiffusionStatusMap[msg_diffusion_id]
 
 			if current_diffusion_status == nil {
-				current_diffusion_status := &DiffusionStatus{
+				current_diffusion_status = &DiffusionStatus{
 					message:     formated_msg_content,
 					nbNeighbors: len(connectedSites),
 					parent:      "",
@@ -457,6 +456,7 @@ func readController() {
 					DiffusionStatusMap[diffusionId] = diffusionStatus
 					sndmsg := prepareWaveMessages(diffusionId, BlueMsg, msg)
 					sendWaveMessages(connectedSites, *id, sndmsg) // we send to all neighbors (sender id is current id by convention)
+					display_d("Starting wave diffusion")
 				}
 			}
 			// display_d("Received message from controller: " + msg)
