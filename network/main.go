@@ -16,7 +16,7 @@ import (
 )
 
 type DiffusionStatus struct {
-	sender_id   string
+	message     string
 	nbNeighbors int
 	parent      string
 }
@@ -115,9 +115,6 @@ func main() {
 	time.Sleep(1 * time.Second)
 
 	go readController()
-
-	// time.Sleep(5 * time.Second) //debug to remove or adjust to repeat it
-	// printConnectedSites()       //debug to remove or adjust to repeat it
 
 	// Wait forever
 	select {}
@@ -268,9 +265,8 @@ func readConn(conn net.Conn, addr string) {
 					msg_format(SiteIdField, *id)
 				writeToConn(conn, sndmsg)
 			} else { // case 3 : classic admission
-				// todo wave for admission : exemple envoyer le message au controleur qui l'ajoute dans la
-				// file d'attente répartie et retourne une demande d'accès à la section critique : quand il l'obtient il pourra renvoyer
-				// un message de release avec potentiellement du texte et un nouveau champs iniquant l'ajout du site
+				// If the sender is not known and there are connected sites, add it to the waiting list in controller to wait for admission
+				// using the critical section protocol
 				display_d("Waiting for admission of " + addr + " by the network (sender ID: " + senderId + ")")
 				addWaitingSiteMap(senderId, &conn, addr)
 				sndmsg := msg_format(TypeField, AddSiteCriticalSection) +
@@ -279,78 +275,108 @@ func readConn(conn net.Conn, addr string) {
 			}
 
 		case DiffusionMessage:
+
 			msg_diffusion_id := findval(msg, DiffusionStatusID, false)
 			msg_color := findval(msg, ColorDiffusion, false)
-			msg_sender := findval(msg, SiteIdField, false)
 			msg_content := findval(msg, MessageContent, false)
+			senderID := findval(msg, SiteIdField, false)
+			formated_msg_content, _ := jsonToMsg(msg_content, true)
+			current_diffusion_status := DiffusionStatusMap[msg_diffusion_id]
 
-			current_duffusion_status := DiffusionStatusMap[msg_diffusion_id]
-
-			if current_duffusion_status == nil {
-				current_duffusion_status := &DiffusionStatus{
-					sender_id:   "",                  //FIXME : shold add ful id
-					nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
+			if current_diffusion_status == nil {
+				current_diffusion_status := &DiffusionStatus{
+					message:     formated_msg_content,
+					nbNeighbors: len(connectedSites),
 					parent:      "",
 				}
-				DiffusionStatusMap[msg_diffusion_id] = current_duffusion_status
+				DiffusionStatusMap[msg_diffusion_id] = current_diffusion_status
 
 			}
 
 			if msg_color == BlueMsg {
-				if current_duffusion_status.parent == "" {
-					// send message to the controleur
-					fmt.Println(msg)
-
-					// update diffusion status
-					current_duffusion_status.parent = msg_sender
-					current_duffusion_status.nbNeighbors -= 1
-
-					if current_duffusion_status.nbNeighbors > 0 {
-						// FIXME : send to all neibors except the parent
-						sndmsg := prepareWaveMessages(msg_diffusion_id, BlueMsg, *id, "", msg_content)
-						sendWaveMessages(connectedSites, msg_sender, sndmsg)
-					} else {
-						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, *id, msg_sender, msg_content)
-						// send only to parent
-						conn := connectedSites[msg_sender]
-						_, err := writeToConn(*conn, sndmsg)
+				display_d("Received blue message from " + senderID + " with content: " + formated_msg_content)
+				if current_diffusion_status.parent == "" {
+					// send message to the controleur + treat it if it is a MsgReleaseSc
+					msg_initial_type := findval(formated_msg_content, TypeField, true)
+					if msg_initial_type == MsgReleaseSc {
+						// if there is sites added to the network, we need to add them to known sites and inform
+						// the controller
+						sitesToAdd := findval(formated_msg_content, SitesToAdd, true)
+						sitesToAddList := []string{} // list of sites to add to the network
+						err := json.Unmarshal([]byte(sitesToAdd), &sitesToAddList)
 						if err != nil {
-							display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
+							display_e("JSON decoding error for sitesToAdd: " + err.Error())
 							continue
 						}
-
+						if len(sitesToAddList) > 0 { // we have sites to add to the network
+							for _, site := range sitesToAddList {
+								addKnownSite(site) // add the site to the known sites
+							}
+							jsonknownSites, err := json.Marshal(knownSites)
+							if err != nil {
+								display_e("Erreur JSON :" + err.Error())
+								return
+							}
+							// Send the new known sites to the controller to update his clock map
+							stringknownSites := string(jsonknownSites)
+							knownSiteMessage := msg_format(TypeField, KnownSiteListMessage) +
+								msg_format(KnownSiteList, stringknownSites) +
+								msg_format(SiteIdField, *id)
+							fmt.Println(knownSiteMessage)
+							display_d("New sites added to the network by " + senderID + " : " + strings.Join(sitesToAddList, ", "))
+						}
 					}
+					fmt.Println(formated_msg_content) // transfer the message to the controller without the diffusion elements
 
+					// update diffusion status
+					current_diffusion_status.parent = senderID
+					current_diffusion_status.nbNeighbors -= 1
+
+					if current_diffusion_status.nbNeighbors > 0 {
+						sndmsg := prepareWaveMessages(msg_diffusion_id, BlueMsg, formated_msg_content)
+						sendWaveMessages(connectedSites, senderID, sndmsg)
+						display_d("Forwarding blue message to neighbors, except the sender: " + senderID)
+					} else {
+						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, formated_msg_content)
+						// send only to parent (the sender of the message)
+						conn := connectedSites[senderID]
+						_, err := writeToConn(*conn, sndmsg)
+						if err != nil {
+							display_e("Error sending message to " + current_diffusion_status.parent + ": " + err.Error())
+							continue
+						}
+						display_d("No more neighbors to forward the blue message, sending red message to parent: " + current_diffusion_status.parent)
+					}
 				} else {
-					// Has already received this message
-					// FIXME : send message to site's parent
-
-					sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, *id, msg_sender, msg_content)
-					// send only to parent
-					conn := connectedSites[msg_sender]
+					// Has already received blue message for this diffusion : sites aren't related
+					sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, formated_msg_content)
+					conn := connectedSites[senderID]
 					_, err := writeToConn(*conn, sndmsg)
 					if err != nil {
-						display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
+						display_e("Error sending message to " + current_diffusion_status.parent + ": " + err.Error())
 						continue
 					}
+					display_d("Already received blue message for this diffusion, sending red message to sender: " + senderID)
 				}
 
 			} else if msg_color == RedMsg {
-				current_duffusion_status.nbNeighbors -= 1
-				if current_duffusion_status.nbNeighbors == 0 {
-					if current_duffusion_status.parent == *id {
+				current_diffusion_status.nbNeighbors -= 1
+				if current_diffusion_status.nbNeighbors <= 0 {
+					if current_diffusion_status.parent == *id {
 						// send message to the controleur
-						fmt.Println(msg)
+						fmt.Println(formated_msg_content)
+						display_d("END of diffusion for message ID " + msg_diffusion_id)
 					} else {
-						// forward the message to the wave initiator
-						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, *id, current_duffusion_status.parent, msg_content)
+						// forward the message to the wave initiator by passsing it to the parent
+						sndmsg := prepareWaveMessages(msg_diffusion_id, RedMsg, formated_msg_content)
 						// send only to parent
-						conn := connectedSites[current_duffusion_status.parent]
+						conn := connectedSites[current_diffusion_status.parent]
 						_, err := writeToConn(*conn, sndmsg)
 						if err != nil {
-							display_e("Error sending message to " + current_duffusion_status.parent + ": " + err.Error())
+							display_e("Error sending message to " + current_diffusion_status.parent + ": " + err.Error())
 							continue
 						}
+						display_d("No more neighbors from which to receive the red message, forwarding to parent: " + current_diffusion_status.parent)
 					}
 				}
 			}
@@ -386,10 +412,10 @@ func readController() {
 			for _, site := range sitesToAddList {
 				addKnownSite(site)
 			}
-			// Send all the known sites to the new sites of the network
+			// Send the new known sites to the controller
 			jsonknownSites, err := json.Marshal(knownSites)
 			if err != nil {
-				fmt.Println("Erreur JSON :", err)
+				display_e("Erreur JSON :" + err.Error())
 				return
 			}
 			stringknownSites := string(jsonknownSites)
@@ -407,119 +433,35 @@ func readController() {
 				registerConn(site, conn, &connectedSites)
 				sndmsg := msg_format(TypeField, MsgAccessGranted) +
 					msg_format(SiteIdField, *id) + // we send our id to the site which asked to join the network
-					msg_format(KnownSiteList, stringknownSites) +
+					msg_format(KnownSiteList, stringknownSites) + // Send all the known sites to the new sites of the network
 					msg_format(UptField, text)
 				writeToConn(conn, sndmsg)
 			}
 
 		default:
 			if rcvtype == MsgReleaseSc || rcvtype == MsgReceiptSc || rcvtype == MsgRequestSc {
+				// Push the critical section message to the network (if any with more site than only the primary site)
+				// using the diffusion protocol
 				if len(connectedSites) == 0 {
 					display_d("No connected sites to send the message: " + msg)
 					// return the message to the controller
 					fmt.Println(msg)
+				} else {
+					count := len(DiffusionStatusMap)
+					diffusionId := fmt.Sprintf("%s:message_%d", *id, count)
+					diffusionStatus := &DiffusionStatus{
+						message:     msg,
+						nbNeighbors: len(connectedSites),
+						parent:      *id,
+					}
+					DiffusionStatusMap[diffusionId] = diffusionStatus
+					sndmsg := prepareWaveMessages(diffusionId, BlueMsg, msg)
+					sendWaveMessages(connectedSites, *id, sndmsg) // we send to all neighbors (sender id is current id by convention)
 				}
-
 			}
-			display_d("Received message from controller: " + msg)
-			// todo handle only specific messages to push to the network
-			// count := len(DiffusionStatusMap)
-			// message_id := count
+			// display_d("Received message from controller: " + msg)
 
-			// diffusionId := fmt.Sprintf("%s:message_%d", *id, message_id) // FIXME: add the current port to ID
-			// diffusionStatus := &DiffusionStatus{
-			// 	sender_id:   *id,
-			// 	nbNeighbors: len(connectedSites), // FIXME: shold be repalced by len(connectedSites)
-			// 	parent:      *id,
-			// }
-
-			// DiffusionStatusMap[diffusionId] = diffusionStatus
-
-			// sndmsg := prepareWaveMessages(diffusionId, BlueMsg, *id, "", msg)
-
-			// sendWaveMessages(connectedSites, *id, sndmsg)
 		}
 		mutex.Unlock()
 	}
 }
-
-// ===========================
-
-// Helper function to print connected sites
-func printConnectedSites() {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	display_e(fmt.Sprintf("Connected sites (%d total):", len(connectedSites)))
-	for addr, conn := range connectedSites {
-		if conn != nil && *conn != nil {
-			display_e(fmt.Sprintf("  - %s (active)", addr))
-		} else {
-			display_e(fmt.Sprintf("  - %s (nil connection)", addr))
-		}
-	}
-}
-
-// func connectToRandomTopology() {
-// 	// All sites use the same logic: choose number of connections based on their ID
-// 	// Site A (id=0): chooses between 0 and 0 (always 0)
-// 	// Site B (id=1): chooses between 1 and 1 (always 1)
-// 	// Site C and beyond: choose between 1 and min(id, 3)
-
-// 	// Create a local random generator
-// 	rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(*id)))
-
-// 	// Determine the range for number of connections
-// 	var minConnections, maxConnections int
-
-// 	if *id == 0 {
-// 		minConnections = 0
-// 		maxConnections = 0
-// 	} else {
-// 		minConnections = 1
-// 		maxConnections = min(*id, 3)
-// 	}
-
-// 	// Choose number of connections within the range
-// 	var numConnections int
-// 	if minConnections == maxConnections {
-// 		numConnections = minConnections
-// 	} else {
-// 		numConnections = rng.Intn(maxConnections-minConnections+1) + minConnections
-// 	}
-
-// 	display_w(fmt.Sprintf("Site %d attempting %d connections to existing sites", *id, numConnections))
-
-// 	// If no connections needed, return early
-// 	if numConnections == 0 {
-// 		display_w(fmt.Sprintf("Site %d starting alone", *id))
-// 		return
-// 	}
-
-// 	// Create list of existing sites (0 to id-1)
-// 	existingSites := make([]int, *id)
-// 	for i := 0; i < *id; i++ {
-// 		existingSites[i] = i
-// 	}
-
-// 	// Shuffle the list and take the first numConnections
-// 	for i := len(existingSites) - 1; i > 0; i-- {
-// 		j := rng.Intn(i + 1)
-// 		existingSites[i], existingSites[j] = existingSites[j], existingSites[i]
-// 	}
-
-// 	// Connect to the selected sites
-// 	connectionsToMake := numConnections
-// 	if connectionsToMake > len(existingSites) {
-// 		connectionsToMake = len(existingSites)
-// 	}
-
-// 	for i := 0; i < connectionsToMake; i++ {
-// 		targetSite := existingSites[i]
-// 		targetPort := portBase + targetSite
-// 		display_e(fmt.Sprintf("Site %d connecting to Site %d (port %d)", *id, targetSite, targetPort))
-// 		go connectToPeer(targetPort, *id)
-// 		// Small delay between connections to avoid overwhelming
-// 		time.Sleep(100 * time.Millisecond)
-// 	}
-// }

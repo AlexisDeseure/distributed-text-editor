@@ -165,7 +165,7 @@ func main() {
 
 			err := json.Unmarshal([]byte(knonwSite), &knownSitesReceived)
 			if err != nil {
-				fmt.Println("Erreur de décodage JSON :", err)
+				display_e("Erreur de décodage JSON :" + err.Error())
 				return
 			}
 
@@ -269,10 +269,6 @@ func main() {
 				tab[idrcv].Clock = stamprcv
 				display_d("Request message received")
 
-				// forward the message to the next site as id != idrcv
-				fmt.Println(rcvmsg)
-				display_d("Forwarding request message")
-
 				// send receipt to the sender by the successor (ring topology)
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
@@ -292,10 +288,6 @@ func main() {
 				tab[idrcv].Clock = stamprcv
 				display_d("Release message received")
 
-				// forward the message to the next site as id != idrcv
-				fmt.Println(rcvmsg)
-				display_d("Forwarding release message")
-
 				// send the updated message to the application
 				sndmsg = msg_format(TypeField, MsgAppUpdate) +
 					msg_format(UptField, findval(rcvmsg, UptField, true))
@@ -306,7 +298,6 @@ func main() {
 
 		// This message is sent by another controller to give a receipt after receiving a previous message
 		case MsgReceiptSc:
-
 			if idrcv != *id {
 				if s_destid == *id {
 					if tab[idrcv].Type != MsgRequestSc {
@@ -316,12 +307,9 @@ func main() {
 					display_d("Receipt received")
 
 					verifyScApproval(tab, *id)
-				} else {
-					// forward the message to the next site as id != destidrcv and id != idrcv
-					sndmsg = rcvmsg
-					display_d("Forwarding receipt message")
 				}
 			}
+
 		case InitializationMessage:
 			// 		msg_format(UptField, originalText)
 			var knownSitesReceived []string
@@ -330,7 +318,7 @@ func main() {
 				display_d("Controller initialization message received as a secondary site")
 				err := json.Unmarshal([]byte(knownSite), &knownSitesReceived)
 				if err != nil {
-					fmt.Println("Erreur de décodage JSON :", err)
+					display_e("Erreur de décodage JSON :" + err.Error())
 					return
 				}
 
@@ -347,80 +335,6 @@ func main() {
 				sndmsg = msg_format(TypeField, MsgReturnInitialText) +
 					msg_format(SiteIdField, idrcv)
 			}
-
-		// // This message is sent by the site and contains the number of lines in the local log file (save file)
-		// case MsgInitialSize:
-
-		// 	display_d("Initial size received")
-		// 	msg := findval(rcvmsg, UptField, true)
-		// 	size, err := strconv.Atoi(msg)
-		// 	if err != nil {
-		// 		display_e("Error while converting string to int: " + err.Error())
-		// 	}
-		// 	tabinit[*id] = size
-
-		// 	// An acknowledgment message is sent to every other controller
-		// 	// it contains the number of lines in the local save file of this controller
-		// 	sndmsg = msg_format(TypeField, MsgAcknowledgement) +
-		// 		msg_format(SiteIdField, *id) +
-		// 		msg_format(UptField, strconv.Itoa(size))
-		// 	display_d("Acknowledgement message sent")
-
-		// // This message is sent by the site and contains each line stored in the local log file (save file)
-		// case MsgInitialText:
-
-		// 	// This message is always received after MsgInitialSize due to FIFO channels.
-		// 	// Thus, verification is only performed here in cases where all sites have acknowledged
-		// 	// their number of lines and this site has the maximum. If all the MsgAcknowledgement
-		// 	// messages were received before the MsgInitialText message, the verification process
-		// 	// in the "case" would have always return an empty string, so verifying here is very important.
-		// 	display_d("Initial text receive")
-		// 	text = findval(rcvmsg, UptField, true)
-		// 	sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
-		// 	// if it is correct else return an empty string
-
-		// // This message is received from every other controller and contains the number of lines in their own local save file
-		// case MsgAcknowledgement:
-
-		// 	if idrcv != *id {
-
-		// 		msg := findval(rcvmsg, UptField, true)
-		// 		size, err := strconv.Atoi(msg)
-		// 		if err != nil {
-		// 			display_e("Error while converting string to int: " + err.Error())
-		// 		}
-
-		// 		display_d("Message acknowledgement received from site " +
-		// 			idrcv +
-		// 			" with " +
-		// 			strconv.Itoa(size) +
-		// 			" lines")
-		// 		// forward the message to the next site as id != idrcv
-		// 		fmt.Println(rcvmsg)
-		// 		display_d("Forwarding acknowledgement message")
-
-		// 		tabinit[idrcv] = size
-		// 		sndmsg = verifyIfMaxNbLinesSite(tabinit, tab, *id, text) // verify if the site has the max and return the message to send
-		// 		// if it is correct else return an empty string
-
-		// 	}
-
-		// // This message is sent by the controller with the longest local save file
-		// // it contains the lines of its save file, to replace the save file of this one
-		// case MsgPropagateText:
-
-		// 	if idrcv != *id {
-		// 		display_d("Initialization text received from site " + idrcv)
-		// 		// forward the message to the next site as id != idrcv
-		// 		fmt.Println(rcvmsg)
-		// 		display_d("Forwarding initial text message")
-
-		// 		text = findval(rcvmsg, UptField, false)
-
-		// 		sndmsg = msg_format(TypeField, MsgReturnNewText) +
-		// 			msg_format(UptField, text)
-		// 		display_d("Sending initial text to app")
-		// 	}
 
 		// This message is sent by the site when the user kills the window
 		case MsgAppDied:

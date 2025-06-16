@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -113,27 +114,29 @@ func findval(msg string, key string, verbose bool) string {
 	return ""
 }
 
-func prepareWaveMessages(messageID string, color string, senderID string, receiverID string, msgContent string) string {
+func prepareWaveMessages(messageID string, color string, msgContent string) string {
+
+	formatedMessageContent, _ := msgToJSON(msgContent, true)
 	var sndmsg string = msg_format(TypeField, DiffusionMessage) +
 		msg_format(DiffusionStatusID, messageID) +
 		msg_format(ColorDiffusion, color) +
-		msg_format(SiteIdField, senderID) +
-		msg_format(SiteIdDestField, receiverID) + // FIXE ME
-		msg_format(MessageContent, msgContent)
+		msg_format(MessageContent, formatedMessageContent) +
+		msg_format(SiteIdField, *id)
 
 	return sndmsg
 }
 
-func sendWaveMessages(neighborhoods map[string]*net.Conn, parent string, sndmsg string) {
+func sendWaveMessages(neighborhoods map[string]*net.Conn, senderID string, sndmsg string) {
 	for timerID, conn := range neighborhoods {
-		display_e("ID DU BUG : timerID " + timerID)
-		if conn != nil && *conn != nil {
-			if timerID != parent {
-				_, err := writeToConn(*conn, sndmsg)
-				if err != nil {
-					display_e("Error sending message to " + timerID + ": " + err.Error())
-					continue
-				}
+		if conn == nil || *conn == nil {
+			display_e("Error sending message to " + timerID + " : connection is nil")
+			continue
+		}
+		if timerID != *id && timerID != senderID {
+			_, err := writeToConn(*conn, sndmsg)
+			if err != nil {
+				display_e("Error sending message to " + timerID + ": " + err.Error())
+				continue
 			}
 		}
 	}
@@ -168,4 +171,75 @@ func processTargetFlags(targetAddrs string) []string {
 	}
 
 	return finalAddrs
+}
+
+func printConnectedSites() {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	display_e(fmt.Sprintf("Connected sites (%d total):", len(connectedSites)))
+	for addr, conn := range connectedSites {
+		if conn != nil && *conn != nil {
+			display_e(fmt.Sprintf("  - %s (active)", addr))
+		} else {
+			display_e(fmt.Sprintf("  - %s (nil connection)", addr))
+		}
+	}
+}
+
+// msgToJSON converts a formatted message to JSON format
+func msgToJSON(msg string, verbose bool) (string, error) {
+	if len(msg) < 4 {
+		if verbose {
+			display_e("Message length too short: " + msg)
+		}
+		return "", fmt.Errorf("message too short")
+	}
+
+	sep := msg[0:1]
+	tab_allkeyvals := strings.Split(msg[1:], sep)
+
+	keyValueMap := make(map[string]string)
+
+	for _, keyval := range tab_allkeyvals {
+		if len(keyval) < 4 {
+			continue
+		}
+
+		equ := keyval[0:1]
+		tabkeyval := strings.Split(keyval[1:], equ)
+		if len(tabkeyval) >= 2 {
+			keyValueMap[tabkeyval[0]] = tabkeyval[1]
+		}
+	}
+
+	jsonBytes, err := json.Marshal(keyValueMap)
+	if err != nil {
+		if verbose {
+			display_e("Error marshaling to JSON: " + err.Error())
+		}
+		return "", err
+	}
+
+	return string(jsonBytes), nil
+}
+
+// jsonToMsg converts JSON to the standard msg_format used in the system
+func jsonToMsg(jsonStr string, verbose bool) (string, error) {
+	var keyValueMap map[string]string
+
+	err := json.Unmarshal([]byte(jsonStr), &keyValueMap)
+	if err != nil {
+		if verbose {
+			display_e("Error unmarshaling JSON: " + err.Error())
+		}
+		return "", err
+	}
+
+	var result string
+	for key, value := range keyValueMap {
+		result += msg_format(key, value)
+	}
+
+	return result, nil
 }
