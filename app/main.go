@@ -302,7 +302,6 @@ func receive(textArea *widget.Entry) {
 			display_d("Critical section updated")
 
 		case ContentRequest:
-			display_e("message arrive dans l'application")
 			// send the local text content to the controleur for cut
 			waveInitator := findval(rcvmsg, CutInitiator, true)
 			var currentText string = getCurrentTextContentFormated()
@@ -312,7 +311,6 @@ func receive(textArea *widget.Entry) {
 				msg_format(UptField, currentText)
 
 			fmt.Println(sndmsg) // send the content to controleur
-			display_e("reponse envoyee ")
 		}
 		mutex.Unlock()
 		rcvmsg = ""
