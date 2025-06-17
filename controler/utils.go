@@ -238,7 +238,6 @@ func FormatJsonCutData(vectorialClock map[string]int, textContent string) (strin
 		log.Fatal(err)
 	}
 
-	display_e("RENDU DU JSON FORMAT" + string(jsonData))
 	return string(jsonData), nil
 }
 
