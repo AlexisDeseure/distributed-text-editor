@@ -141,7 +141,7 @@ func main() {
 		// destidrcv, _ = strconv.Atoi(s_destid)
 
 		// if the message is a Receipt and is not for this site, ignore it
-		if rcvtyp != MsgReceiptSc || rcvtyp != MsgReceiptCut || s_destid == *id { //TODO Les messages qui ne sont pas destiné incrémente pas l'horloge
+		if (rcvtyp != MsgReceiptSc && rcvtyp != MsgReceiptCut) || s_destid == *id { //TODO Les messages qui ne sont pas destiné incrémente pas l'horloge
 
 			// update the stamp of the site
 			s = resetStamp(s, stamprcv)
@@ -503,11 +503,10 @@ func main() {
 				}
 			}
 		}
+		// send message to successor
+		if sndmsg != "" {
+			currentAction++
+			fmt.Println(sndmsg)
+		}
 	}
-	// send message to successor
-	if sndmsg != "" {
-		currentAction++
-		fmt.Println(sndmsg)
-	}
-
 }
