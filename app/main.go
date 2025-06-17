@@ -173,10 +173,12 @@ func send(textArea *widget.Entry) {
 		if cut {
 			// if the cut button has been pressed we process it and communicate with controller
 			cut = false
+			var currentText string = getCurrentTextContentFormated()
 			nextCutNumber, _ := GetNextCutNumber(localCutFilePath)
 			sndmsg = msg_format(TypeField, MsgCut) +
 				msg_format(cutNumber, nextCutNumber) +
-				msg_format(NumberVirtualClockSaved, strconv.Itoa(0))
+				msg_format(NumberVirtualClockSaved, strconv.Itoa(0)) +
+				msg_format(UptField, currentText)
 
 		} else if sectionAccess && (!*debug || save) {
 			// if the controller has granted access to the critical section and we can save

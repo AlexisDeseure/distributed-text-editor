@@ -23,6 +23,11 @@ type StateObject struct {
 	Clock int
 }
 
+type CutValue struct {
+	VectorialClock map[string]int `json:"vectorialClock"`
+	TextContent    string         `json:"textContent"`
+}
+
 type StateMap map[string]*StateObject
 
 // msg_format constructs a key-value string using predefined separators
@@ -125,7 +130,6 @@ func timestampComparison(a, b CompareElement) bool {
 	return false
 }
 
-
 // verifyScApproval checks if the local site can enter the critical section and signals approval
 func verifyScApproval(tab StateMap, myID string) {
 	var sndmsg string
@@ -147,7 +151,7 @@ func verifyScApproval(tab StateMap, myID string) {
 }
 
 // saveCutJson records a vectorial clock under a given cut and action in a JSON file
-func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumber string, filePath string) error {
+func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumber string, filePath string, textContent string) error {
 	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("error opening/creating file: %w", err)
@@ -176,7 +180,13 @@ func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumb
 		data[cutNumber] = innerMap
 	}
 
-	innerMap[siteActionNumber] = vectorialClock
+	// Création de la structure CutValue
+	var val CutValue = CutValue{
+		VectorialClock: vectorialClock,
+		TextContent:    textContent, // string brut
+	}
+
+	innerMap[siteActionNumber] = val
 
 	_, err = fichier.Seek(0, 0)
 	if err != nil {

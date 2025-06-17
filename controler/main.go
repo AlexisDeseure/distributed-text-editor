@@ -75,7 +75,7 @@ func main() {
 	vectorialClock[*id] = 0
 	var currentAction int = 0              // action counter
 	var idToAddNetworkNextRelease []string // id of the site to add to the next release message
-	var applicationClosed bool = false      // flag to indicate if the application is closed
+	var applicationClosed bool = false     // flag to indicate if the application is closed
 
 	tab := CreateDefaultStateMap(*id) //not a table but a StateMap : make(map[string]*StateObject)
 	// tabinit := CreateTabInit()
@@ -251,7 +251,7 @@ func main() {
 				msg_format(VectorialClockField, string(jsonVc)) +
 				msg_format(SitesToAdd, string(jsonIdToAdd)) +
 				msg_format(CloseSiteField, strconv.FormatBool(applicationClosed))
-				
+
 			display_d("Releasing critical section")
 			idToAddNetworkNextRelease = idToAddNetworkNextRelease[:0] // reset the list after use
 
@@ -363,7 +363,6 @@ func main() {
 				display_d("Requesting critical section (to at least quit the application)")
 			}
 
-
 		// This message is sent by the site to request a cut
 		// It is then propagated to other controllers
 		case MsgCut:
@@ -372,6 +371,7 @@ func main() {
 			if err != nil {
 				display_e("Error : " + err.Error())
 			}
+			var textContent string = findval(rcvmsg, UptField, true)
 			if nbvls < len(tab) {
 				if nbvls == 0 {
 					display_d("Cut message received from application")
@@ -381,12 +381,13 @@ func main() {
 
 				siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
 
-				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath)
+				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath, textContent)
 				nbvls++
 
 				sndmsg = msg_format(TypeField, MsgCut) +
 					msg_format(cutNumber, nbcut) +
-					msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls))
+					msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls)) +
+					msg_format(UptField, textContent)
 			} else {
 				sndmsg = ""
 				display_d("Cut saved to file")
