@@ -21,7 +21,6 @@ const (
 	MsgRequestSc           string = "rqs" // request critical section
 	MsgReleaseSc           string = "rls" // release critical section
 	MsgReceiptSc           string = "rcs" // receipt of critical section
-	MsgCut                 string = "cut" // give the vectorial clock value
 
 	// message types to interact with the application
 	MsgAppRequest        string = "rqa"  // request critical section
@@ -35,17 +34,14 @@ const (
 
 // message fields
 const (
-	TypeField               string = "typ" // type of message
-	UptField                string = "upt" // content of update for application
-	StampField              string = "stp" // site stamp value
-	SiteIdField             string = "sid" // site id of sender
-	SiteIdDestField         string = "did" // site id of destination
-	VectorialClockField     string = "vcl" // vectorial clock value
-	cutNumber               string = "cnb" // number of next cut
-	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
-	KnownSiteList           string = "ksl" // list of sites to add to estampille tab
-	SitesToAdd              string = "sta" // list of sites to add to the next release message
-	CloseSiteField          string = "cls" // close site field
+	TypeField       string = "typ" // type of message
+	UptField        string = "upt" // content of update for application
+	StampField      string = "stp" // site stamp value
+	SiteIdField     string = "sid" // site id of sender
+	SiteIdDestField string = "did" // site id of destination
+	KnownSiteList   string = "ksl" // list of sites to add to estampille tab
+	SitesToAdd      string = "sta" // list of sites to add to the next release message
+	CloseSiteField  string = "cls" // close site field
 )
 
 var (
@@ -54,25 +50,14 @@ var (
 	s  int     = 0
 )
 
-// var text string = ""
-
-var (
-	outputDir        *string = flag.String("o", "./output", "output directory")
-	localCutFilePath         = fmt.Sprintf("%s/cut.json", *outputDir)
-)
-
 func main() {
 	flag.Parse()
 
-	var sndmsg string // message to be sent
-	var rcvtyp string // type of the received message
-	var rcvmsg string // received message
-	// var vcrcv []int = make([]int, *N)
-	var vcrcv map[string]int = make(map[string]int)          // received vectorial clock
-	var stamprcv int                                         // received stamp
-	var idrcv string                                         // id of the controller who sent the received message
-	var vectorialClock map[string]int = make(map[string]int) // vectorial clock initialized to 0
-	vectorialClock[*id] = 0
+	var sndmsg string                      // message to be sent
+	var rcvtyp string                      // type of the received message
+	var rcvmsg string                      // received message
+	var stamprcv int                       // received stamp
+	var idrcv string                       // id of the controller who sent the received message
 	var currentAction int = 0              // action counter
 	var idToAddNetworkNextRelease []string // id of the site to add to the next release message
 	var applicationClosed bool = false     // flag to indicate if the application is closed
@@ -82,14 +67,6 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-
-		// transform the vectorial clock into a json at the beginning of the loop
-		// to avoid nill/undefined jsonVc value
-		jsonVc, err := json.Marshal(vectorialClock)
-
-		if err != nil {
-			display_e("JSON encoding error: " + err.Error())
-		}
 
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
@@ -128,25 +105,6 @@ func main() {
 			// update the stamp of the site
 			s = resetStamp(s, stamprcv)
 
-			// get a possible vectorial clock from the message
-			tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
-
-			if tmp_vcrc != "" {
-
-				// update the vectorial clock if the message is not from the application
-				var err error
-				err = json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
-				if err != nil {
-					display_e(rcvmsg + " : Error unmarshalling vectorial clock: " + err.Error())
-				}
-
-				// update the vectorial clock
-				vectorialClock = updateVectorialClock(vectorialClock, vcrcv, *id)
-				jsonVc, err = json.Marshal(vectorialClock)
-				if err != nil {
-					display_e("JSON encoding error: " + err.Error())
-				}
-			}
 		}
 
 		sndmsg = ""
@@ -211,8 +169,7 @@ func main() {
 
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, *id) +
-					msg_format(VectorialClockField, string(jsonVc))
+					msg_format(SiteIdField, *id)
 				display_d("Requesting critical section (to at least add site to network)")
 			}
 
@@ -226,8 +183,7 @@ func main() {
 
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, *id) +
-					msg_format(VectorialClockField, string(jsonVc))
+					msg_format(SiteIdField, *id)
 				display_d("Requesting critical section (to at least send modification in shared text)")
 			}
 
@@ -248,7 +204,6 @@ func main() {
 				msg_format(StampField, strconv.Itoa(s)) +
 				msg_format(UptField, msg) +
 				msg_format(SiteIdField, *id) +
-				msg_format(VectorialClockField, string(jsonVc)) +
 				msg_format(SitesToAdd, string(jsonIdToAdd)) +
 				msg_format(CloseSiteField, strconv.FormatBool(applicationClosed))
 
@@ -267,8 +222,7 @@ func main() {
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
 					msg_format(SiteIdField, *id) +
-					msg_format(SiteIdDestField, idrcv) +
-					msg_format(VectorialClockField, string(jsonVc))
+					msg_format(SiteIdDestField, idrcv)
 				display_d("Sending receipt")
 
 			}
@@ -358,39 +312,8 @@ func main() {
 
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, *id) +
-					msg_format(VectorialClockField, string(jsonVc))
+					msg_format(SiteIdField, *id)
 				display_d("Requesting critical section (to at least quit the application)")
-			}
-
-		// This message is sent by the site to request a cut
-		// It is then propagated to other controllers
-		case MsgCut:
-			nbcut := findval(rcvmsg, cutNumber, false)
-			nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
-			if err != nil {
-				display_e("Error : " + err.Error())
-			}
-			var textContent string = findval(rcvmsg, UptField, true)
-			if nbvls < len(tab) {
-				if nbvls == 0 {
-					display_d("Cut message received from application")
-				} else {
-					display_d("Cut message received from a controler")
-				}
-
-				siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
-
-				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath, textContent)
-				nbvls++
-
-				sndmsg = msg_format(TypeField, MsgCut) +
-					msg_format(cutNumber, nbcut) +
-					msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls)) +
-					msg_format(UptField, textContent)
-			} else {
-				sndmsg = ""
-				display_d("Cut saved to file")
 			}
 
 		}
