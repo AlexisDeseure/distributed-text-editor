@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,16 +25,20 @@ import (
 // message types
 const (
 	// message types to be sent to controler
-	MsgAppRequest string = "rqa" // request critical section
-	MsgAppRelease string = "rla" // release critical section
-	MsgCut        string = "cut" // save the vectorial clock value
-	MsgAppDied    string = "apd" // notify the controller that the app has been closed
+	MsgAppRequest   string = "rqa" // request critical section
+	MsgAppRelease   string = "rla" // release critical section
+	MsgCut          string = "cut" // save the vectorial clock value
+	MsgAppDied      string = "apd" // notify the controller that the app has been closed
+	MsgJsonResponse string = "jco" // json data for cut completed, ready to save
+	ContentResponse string = "crp" // response with content for cut
 
 	// message types to be receive from controler
 	MsgAppStartSc        string = "ssa"  // start critical section
 	MsgAppUpdate         string = "upa"  // update critical section
 	MsgReturnInitialText string = "ret"  // return the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
+	ContentRequest       string = "cqr"  // request content for cut
+
 )
 
 // message fields
@@ -45,6 +48,8 @@ const (
 	cutNumber               string = "cnb" // number of next cut
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 	SiteIdField             string = "sid" // site id of sender
+	JsonCutData             string = "jcd" // json data to add into cut file
+	CutInitiator            string = "cti" // initiator of the cut request
 )
 
 var outputDir *string = flag.String("o", "./output", "output directory")
@@ -62,8 +67,8 @@ var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
 var mutex = &sync.Mutex{}
 
 var (
-	localSaveFilePath string                                          //path to the local save of the shared file in a log format
-	localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir) //path to the cuts file
+	localSaveFilePath string //path to the local save of the shared file in a log format
+	// localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir) //path to the cuts file TODO SUPRIMER
 )
 
 var (
@@ -174,10 +179,10 @@ func send(textArea *widget.Entry) {
 			// if the cut button has been pressed we process it and communicate with controller
 			cut = false
 			var currentText string = getCurrentTextContentFormated()
-			nextCutNumber, _ := GetNextCutNumber(localCutFilePath)
+			// nextCutNumber, _ := GetNextCutNumber(localCutFilePath) TODO : DEPLACE INTO CONTROLEUR
 			sndmsg = msg_format(TypeField, MsgCut) +
-				msg_format(cutNumber, nextCutNumber) +
-				msg_format(NumberVirtualClockSaved, strconv.Itoa(0)) +
+				// msg_format(cutNumber, nextCutNumber) + TODO : DEPLACE INTO CONTROLEUR
+				// msg_format(NumberVirtualClockSaved, strconv.Itoa(0)) + TODO : supprimer
 				msg_format(UptField, currentText)
 
 		} else if sectionAccess && (!*debug || save) {
@@ -296,6 +301,18 @@ func receive(textArea *widget.Entry) {
 
 			display_d("Critical section updated")
 
+		case ContentRequest:
+			display_e("message arrive dans l'application")
+			// send the local text content to the controleur for cut
+			waveInitator := findval(rcvmsg, CutInitiator, true)
+			var currentText string = getCurrentTextContentFormated()
+
+			var sndmsg string = msg_format(TypeField, ContentResponse) +
+				msg_format(CutInitiator, waveInitator) +
+				msg_format(UptField, currentText)
+
+			fmt.Println(sndmsg) // send the content to controleur
+			display_e("reponse envoyee ")
 		}
 		mutex.Unlock()
 		rcvmsg = ""

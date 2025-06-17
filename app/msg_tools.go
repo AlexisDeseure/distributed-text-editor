@@ -1,11 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -57,43 +54,4 @@ func getCurrentTextContentFormated() string {
 	// "\n" cannot be sent to the standard output without being misinterpreted
 	formatted := strings.ReplaceAll(string(content), "\n", "↩")
 	return formatted
-}
-
-func GetNextCutNumber(filePath string) (string, error) {
-	data, err := os.ReadFile(filepath.Clean(filePath))
-	if err != nil {
-		return "cut_number_1", fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var cuts map[string]interface{} // Use interface{} as values might not strictly be strings
-	err = json.Unmarshal(data, &cuts)
-	if err != nil {
-		return "cut_number_1", fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	maxCut := -1
-	for key := range cuts {
-		if !strings.HasPrefix(key, "cut_number_") {
-			continue
-		}
-
-		parts := strings.Split(key, "_")
-		if len(parts) != 3 {
-			continue
-		}
-
-		numStr := parts[2]
-		num, err := strconv.Atoi(numStr)
-		if err != nil {
-			// Ignore keys where the number part is not a valid integer
-			continue
-		}
-
-		if num > maxCut {
-			maxCut = num
-		}
-	}
-
-	nextCut := maxCut + 1
-	return fmt.Sprintf("cut_number_%d", nextCut), nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -22,6 +23,8 @@ const (
 	MsgReleaseSc           string = "rls" // release critical section
 	MsgReceiptSc           string = "rcs" // receipt of critical section
 	MsgCut                 string = "cut" // give the vectorial clock value
+	MsgJsonRequest         string = "jqr" // request json data for cut
+	MsgReceiptCut          string = "rcp" // json data for cut completed, ready to save
 
 	// message types to interact with the application
 	MsgAppRequest        string = "rqa"  // request critical section
@@ -31,6 +34,9 @@ const (
 	MsgReturnInitialText string = "ret"  // give the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
 	MsgAppDied           string = "apd"  // notify the controller that the app has been closed
+	ContentRequest       string = "cqr"  // request content for cut
+	ContentResponse      string = "crp"  // response with content for cut
+
 )
 
 // message fields
@@ -41,11 +47,14 @@ const (
 	SiteIdField             string = "sid" // site id of sender
 	SiteIdDestField         string = "did" // site id of destination
 	VectorialClockField     string = "vcl" // vectorial clock value
-	cutNumber               string = "cnb" // number of next cut
+	cutNumber               string = "cnb" // number of next cut //TODO SHOULD BE DEPLACE IN THIS SECTION
 	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 	KnownSiteList           string = "ksl" // list of sites to add to estampille tab
 	SitesToAdd              string = "sta" // list of sites to add to the next release message
 	CloseSiteField          string = "cls" // close site field
+	JsonCutData             string = "jcd" // json data to add into cut file
+	CutInitiator            string = "cti" // initiator of the cut request
+	KeyCut                  string = "kct" // key of the cut in the json file
 )
 
 var (
@@ -58,12 +67,21 @@ var (
 
 var (
 	outputDir        *string = flag.String("o", "./output", "output directory")
-	localCutFilePath         = fmt.Sprintf("%s/cut.json", *outputDir)
+	localCutFilePath string
 )
+
+type CutJsonValue struct {
+	VectorialClock map[string]int `json:"vectorialClock"`
+	TextContent    string         `json:"textContent"`
+}
+
+// var nextCutJsonContent map[string]map[string]string
+var nextCutJsonContent = make(map[string]map[string]string)
+var nbcut string
 
 func main() {
 	flag.Parse()
-
+	localCutFilePath = fmt.Sprintf("%s/%s_cut.json", *outputDir, *id)
 	var sndmsg string // message to be sent
 	var rcvtyp string // type of the received message
 	var rcvmsg string // received message
@@ -123,7 +141,7 @@ func main() {
 		// destidrcv, _ = strconv.Atoi(s_destid)
 
 		// if the message is a Receipt and is not for this site, ignore it
-		if rcvtyp != MsgReceiptSc || s_destid == *id {
+		if rcvtyp != MsgReceiptSc || rcvtyp != MsgReceiptCut || s_destid == *id { //TODO Les messages qui ne sont pas destiné incrémente pas l'horloge
 
 			// update the stamp of the site
 			s = resetStamp(s, stamprcv)
@@ -365,41 +383,131 @@ func main() {
 
 		// This message is sent by the site to request a cut
 		// It is then propagated to other controllers
-		case MsgCut:
-			nbcut := findval(rcvmsg, cutNumber, false)
-			nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false))
-			if err != nil {
-				display_e("Error : " + err.Error())
-			}
+		case MsgCut: // add to wave expedition
+			// START A WAVE TO GET ALL DATAS FOR CUT
+
+			// nbcut := findval(rcvmsg, cutNumber, false) // TODO DEPLACE HERE
+			// nbcut, _ := GetNextCutNumber(localCutFilePath) // TODO DEPLACEMENT MEMENT ENREGISTREMENT
+			// nbvls, err := strconv.Atoi(findval(rcvmsg, NumberVirtualClockSaved, false)) // TODO USELESS??
+			// if err != nil {
+			// 	display_e("Error : " + err.Error())
+			// }
+			// if nbvls < len(tab) {
+			// if nbvls == 0 {
+			// 	display_d("Cut message received from application")
+			// } else {
+			// 	display_d("Cut message received from a controler")
+			// }
+
+			// nextCutJsonContent = make(map[string]map[string]string)
+			// nextCutJsonElement := make(map[string]string)
+
+			// var textContent string = findval(rcvmsg, UptField, true)                   //  CONVERTIT EN JSON
+			// siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1) //key
+
+			// nbcut, _ = GetNextCutNumber(localCutFilePath)
+			// finalJsonData, _ := FormatJsonCutData(vectorialClock, textContent)
+			// nextCutJsonElement[siteActionNumber] = finalJsonData // store the json data for the cut
+			// nextCutJsonContent[nbcut] = nextCutJsonElement       // store the json data for the cut
+
+			// // saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath, textContent) // TODO SAUVEGARDER AU RETOUR DE LA VAGUE
+			// // nbvls++
+
 			var textContent string = findval(rcvmsg, UptField, true)
-			if nbvls < len(tab) {
-				if nbvls == 0 {
-					display_d("Cut message received from application")
-				} else {
-					display_d("Cut message received from a controler")
+			siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
+
+			nbcut, _ = GetNextCutNumber(localCutFilePath)
+			finalJsonData, _ := FormatJsonCutData(vectorialClock, textContent)
+
+			// 2. Vérifiez si une entrée pour cette coupe ('nbcut') existe déjà
+			if _, ok := nextCutJsonContent[nbcut]; !ok {
+				// Si elle n'existe pas, on crée la map interne pour cette coupe
+				nextCutJsonContent[nbcut] = make(map[string]string)
+			}
+
+			// 3. Maintenant, ajoutez en toute sécurité la nouvelle donnée à la map de la coupe
+			nextCutJsonContent[nbcut][siteActionNumber] = finalJsonData
+			sndmsg = msg_format(TypeField, MsgJsonRequest) +
+				// msg_format(cutNumber, nbcut) + // TODO DEPLACER AU MOMENT DE L'ERREGISTREMENT
+				msg_format(SiteIdField, *id) +
+				msg_format(CutInitiator, *id)
+			display_e("Cut message received, START WAVE!")
+			// msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls)) +
+			// } else {
+			// 	sndmsg = ""
+			// 	display_d("Cut saved to file")
+			// }
+		case MsgJsonRequest:
+			display_e("vague recu cote controleur")
+			// ask the text content to the application
+			waveInitator := findval(rcvmsg, CutInitiator, true)
+
+			if *id != waveInitator {
+				display_e("demande de ressource a application")
+				sndmsg = msg_format(TypeField, ContentRequest) +
+					msg_format(CutInitiator, waveInitator)
+			}
+
+		case ContentResponse: //SiteIdDestField
+			// receive the text content from the application*
+			display_e("reponse reçu de l'application")
+			textContent := findval(rcvmsg, UptField, true)
+			waveInitator := findval(rcvmsg, CutInitiator, true)
+			display_e("reponse de l'application pour la vague initiée par " + textContent)
+
+			siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
+			formatJsonTextContent, _ := FormatJsonCutData(vectorialClock, textContent)
+			display_e("je suis ici!")
+			display_e("APRE FORMATAGE DANS LA FONCTION : " + formatJsonTextContent)
+
+			sndmsg = msg_format(TypeField, MsgReceiptCut) +
+				msg_format(SiteIdField, *id) +
+				msg_format(KeyCut, siteActionNumber) +
+				msg_format(JsonCutData, formatJsonTextContent) +
+				msg_format(SiteIdDestField, waveInitator) // send the response to the wave initiator
+
+		case MsgReceiptCut:
+			if s_destid == *id && idrcv != *id { // if the message is for this site and not from itself
+
+				// received a response from the wave
+				receiviedJsonData := findval(rcvmsg, JsonCutData, true)
+				receivedKeyCut := findval(rcvmsg, KeyCut, true)
+				display_e("JSON RECU  : " + receiviedJsonData)
+
+				// nextCutJsonElement := make(map[string]string)
+				// nextCutJsonElement[receivedKeyCut] = receiviedJsonData // merge the received json data with the next cut json content
+				// nextCutJsonContent[nbcut] = nextCutJsonElement
+
+				nextCutJsonElement := make(map[string]string)
+				nextCutJsonElement[receivedKeyCut] = receiviedJsonData
+
+				// Il faut aussi s'assurer que la map interne est initialisée
+				if _, ok := nextCutJsonContent[nbcut]; !ok {
+					nextCutJsonContent[nbcut] = make(map[string]string)
 				}
 
-				siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
+				nextCutJsonContent[nbcut][receivedKeyCut] = receiviedJsonData
+				count := len(nextCutJsonContent[nbcut]) // count the number of sites that have responded to the wave
+				if count == len(tab) {                  // if all sites have responded to the wave
+					display_e("All sites have responded to the wave, saving cut data !!")
+					// convert json data into string
+					stringData, err := json.Marshal(nextCutJsonContent[nbcut])
+					if err != nil {
+						log.Fatal(err)
+					}
+					display_e("Cut data to save: " + string(stringData))
 
-				saveCutJson(nbcut, vectorialClock, siteActionNumber, localCutFilePath, textContent)
-				nbvls++
-
-				sndmsg = msg_format(TypeField, MsgCut) +
-					msg_format(cutNumber, nbcut) +
-					msg_format(NumberVirtualClockSaved, strconv.Itoa(nbvls)) +
-					msg_format(UptField, textContent)
-			} else {
-				sndmsg = ""
-				display_d("Cut saved to file")
+					nbcut, _ := GetNextCutNumber(localCutFilePath)
+					display_e("Saving cut data to file: " + localCutFilePath)
+					saveCutJson(nbcut, localCutFilePath, string(stringData)) // save the cut json data to the file
+				}
 			}
-
 		}
-
-		// send message to successor
-		if sndmsg != "" {
-			currentAction++
-			fmt.Println(sndmsg)
-		}
-
 	}
+	// send message to successor
+	if sndmsg != "" {
+		currentAction++
+		fmt.Println(sndmsg)
+	}
+
 }

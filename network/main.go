@@ -27,7 +27,6 @@ type WaitingObject struct {
 }
 type WaitingMap map[string]*WaitingObject
 
-
 var mutex = &sync.Mutex{}
 var DiffusionStatusMap = make(map[string]*DiffusionStatus)
 var connectedSites = make(map[string]*net.Conn)                 // connections which are in the network
@@ -54,6 +53,9 @@ const (
 	MsgRequestSc           string = "rqs" // request critical section (cf. controller)
 	MsgReleaseSc           string = "rls" // release critical section (cf. controller)
 	MsgReceiptSc           string = "rcs" // receipt of critical section (cf. controller)
+	MsgJsonRequest         string = "jqr" // request json data for cut
+	MsgReceiptCut          string = "rcp" // json data for cut completed, ready to save
+
 )
 
 // key
@@ -352,7 +354,7 @@ func readConn(conn net.Conn, addr string) {
 							continue
 						}
 						processRemovedSite(formated_msg_content) // process the removed site if any
-						fmt.Println(formated_msg_content) // transfer the message to the controller without the diffusion elements
+						fmt.Println(formated_msg_content)        // transfer the message to the controller without the diffusion elements
 						display_d("No more neighbors to forward the blue message, sending red message to parent: " + current_diffusion_status.parent)
 					}
 				} else {
@@ -386,7 +388,7 @@ func readConn(conn net.Conn, addr string) {
 							continue
 						}
 						processRemovedSite(formated_msg_content) // process the removed site if any
-						fmt.Println(formated_msg_content) // transfer the message to the controller without the diffusion elements
+						fmt.Println(formated_msg_content)        // transfer the message to the controller without the diffusion elements
 						display_d("No more neighbors from which to receive the red message, forwarding to parent: " + current_diffusion_status.parent)
 					}
 				}
@@ -450,7 +452,7 @@ func readController() {
 			}
 
 		default:
-			if rcvtype == MsgReleaseSc || rcvtype == MsgReceiptSc || rcvtype == MsgRequestSc {
+			if rcvtype == MsgReleaseSc || rcvtype == MsgReceiptSc || rcvtype == MsgRequestSc || rcvtype == MsgJsonRequest || rcvtype == MsgReceiptCut {
 				// Push the critical section message to the network (if any with more site than only the primary site)
 				// using the diffusion protocol
 				if len(connectedSites) == 0 {
@@ -476,7 +478,7 @@ func readController() {
 						needToCloseBool, _ := strconv.ParseBool(needToClose)
 						if needToCloseBool {
 							display_w("Application has been closed, site needs to inform the network")
-							
+
 							// Extract addresses from connected sites
 							addresses := make(map[string]string)
 							for idConn, conn := range connectedSites {
@@ -484,7 +486,7 @@ func readController() {
 									addresses[idConn] = (*conn).RemoteAddr().String()
 								}
 							}
-							
+
 							// Serialize addresses to JSON
 							jsonAddresses, err := json.Marshal(addresses)
 							if err != nil {
@@ -514,13 +516,12 @@ func readController() {
 	}
 }
 
-
 func processRemovedSite(formated_msg_content string) {
 	senderId := findval(formated_msg_content, SiteIdField, true)
 	closeSiteAddress := findval(formated_msg_content, CloseSiteAddress, false)
 	if closeSiteAddress != "" {
 		if *id == senderId { // if we are the sender, we need to close all connections
-			fmt.Println(formated_msg_content) // transfer the message to the controller 
+			fmt.Println(formated_msg_content) // transfer the message to the controller
 			// without the diffusion elements to inform it that it can close itself
 			display_w("Current site is closing, removing all connections")
 			unregisterAllConns(&connectedSites)
@@ -528,9 +529,9 @@ func processRemovedSite(formated_msg_content string) {
 			os.Exit(0)
 		} else {
 			display_w("Received close site message from " + senderId)
-			delKnownSite(senderId) // remove the site from the known sites
-		    if isConnected(senderId) {// if the site is connected to the current site, we need 
-			// to close the connection and recreate all the connections with his neighbors
+			delKnownSite(senderId)     // remove the site from the known sites
+			if isConnected(senderId) { // if the site is connected to the current site, we need
+				// to close the connection and recreate all the connections with his neighbors
 				conn := getAndRemoveConn(senderId, &connectedSites)
 				if conn != nil {
 					(*conn).Close()
@@ -542,9 +543,9 @@ func processRemovedSite(formated_msg_content string) {
 					display_e("JSON decoding error for closeSiteAddress: " + err.Error())
 					return
 				}
-				
+
 				for siteId, addr := range closeSiteAddresses {
-					if siteId != *id && addr != "" {// do not connect to itself
+					if siteId != *id && addr != "" { // do not connect to itself
 						display_w("Reconnecting to " + siteId + " at address " + addr)
 						go connectToPeer(addr) // reconnect to the site at the given address
 					}

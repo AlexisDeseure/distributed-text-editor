@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -21,11 +24,6 @@ type CompareElement struct {
 type StateObject struct {
 	Type  string
 	Clock int
-}
-
-type CutValue struct {
-	VectorialClock map[string]int `json:"vectorialClock"`
-	TextContent    string         `json:"textContent"`
 }
 
 type StateMap map[string]*StateObject
@@ -150,8 +148,57 @@ func verifyScApproval(tab StateMap, myID string) {
 	}
 }
 
-// saveCutJson records a vectorial clock under a given cut and action in a JSON file
-func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumber string, filePath string, textContent string) error {
+// // saveCutJson records a vectorial clock under a given cut and action in a JSON file
+// func saveCutJson(cutNumber string, filePath string, newcontent string) error {
+// 	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
+// 	if err != nil {
+// 		return fmt.Errorf("error opening/creating file: %w", err)
+// 	}
+// 	defer fichier.Close()
+
+// 	contenu, err := io.ReadAll(fichier)
+// 	if err != nil {
+// 		return fmt.Errorf("error reading file: %w", err)
+// 	}
+
+// 	// convert the file content into json structure
+// 	var data map[string]interface{}
+// 	if len(contenu) == 0 {
+// 		data = make(map[string]interface{})
+// 	} else {
+// 		err = json.Unmarshal(contenu, &data)
+// 		if err != nil {
+// 			return fmt.Errorf("error while parsing JSON: %w", err)
+// 		}
+// 	}
+
+// 	// json structure: {cutNumber: {siteActionNumber: vectorialClock}}
+// 	data["cutNumber"] = newcontent
+
+// 	_, err = fichier.Seek(0, 0)
+// 	if err != nil {
+// 		return fmt.Errorf("error seeking file start: %w", err)
+// 	}
+
+// 	err = fichier.Truncate(0)
+// 	if err != nil {
+// 		return fmt.Errorf("error truncating file: %w", err)
+// 	}
+
+// 	modifiedContent, err := json.MarshalIndent(data, "", "  ")
+// 	if err != nil {
+// 		return fmt.Errorf("error marshalling JSON: %w", err)
+// 	}
+
+// 	_, err = fichier.Write(modifiedContent)
+// 	if err != nil {
+// 		return fmt.Errorf("error writing to file: %w", err)
+// 	}
+
+// 	return nil
+// }
+
+func saveCutJson(cutNumber string, filePath string, newcontent string) error {
 	fichier, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return fmt.Errorf("error opening/creating file: %w", err)
@@ -169,24 +216,27 @@ func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumb
 	} else {
 		err = json.Unmarshal(contenu, &data)
 		if err != nil {
-			return fmt.Errorf("error while parsing JSON: %w", err)
+			return fmt.Errorf("error while parsing JSON from file: %w", err)
 		}
 	}
 
-	// json structure: {cutNumber: {siteActionNumber: vectorialClock}}
-	innerMap, ok := data[cutNumber].(map[string]interface{})
-	if !ok {
-		innerMap = make(map[string]interface{})
-		data[cutNumber] = innerMap
+	// --- DÉBUT DE LA MODIFICATION ---
+
+	// 1. Désérialiser la chaîne 'newcontent' qui est elle-même du JSON.
+	//    On utilise interface{} car on ne connaît pas la structure exacte à l'avance,
+	//    ce qui la rend très flexible.
+	var parsedNewContent interface{}
+	err = json.Unmarshal([]byte(newcontent), &parsedNewContent)
+	if err != nil {
+		// Si 'newcontent' n'est pas une chaîne JSON valide, on retourne une erreur.
+		return fmt.Errorf("error parsing newcontent string as JSON: %w", err)
 	}
 
-	// Création de la structure CutValue
-	var val CutValue = CutValue{
-		VectorialClock: vectorialClock,
-		TextContent:    textContent, // string brut
-	}
+	// 2. Assigner l'objet Go (et non la chaîne) à la clé correspondante.
+	//    On utilise la variable `cutNumber` comme clé, ce qui semble être l'intention.
+	data[cutNumber] = parsedNewContent
 
-	innerMap[siteActionNumber] = val
+	// --- FIN DE LA MODIFICATION ---
 
 	_, err = fichier.Seek(0, 0)
 	if err != nil {
@@ -198,7 +248,9 @@ func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumb
 		return fmt.Errorf("error truncating file: %w", err)
 	}
 
-	modifiedContent, err := json.MarshalIndent(data, "", "  ")
+	// json.MarshalIndent va maintenant fonctionner correctement car `data`
+	// contient des structures Go natives (maps, slices, etc.) et non des chaînes pré-formatées.
+	modifiedContent, err := json.MarshalIndent(data, "", "  ") // "  " pour une belle indentation
 	if err != nil {
 		return fmt.Errorf("error marshalling JSON: %w", err)
 	}
@@ -209,4 +261,83 @@ func saveCutJson(cutNumber string, vectorialClock map[string]int, siteActionNumb
 	}
 
 	return nil
+}
+
+func GetNextCutNumber(filePath string) (string, error) {
+	data, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		return "cut_number_1", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var cuts map[string]interface{} // Use interface{} as values might not strictly be strings
+	err = json.Unmarshal(data, &cuts)
+	if err != nil {
+		return "cut_number_1", fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	maxCut := -1
+	for key := range cuts {
+		if !strings.HasPrefix(key, "cut_number_") {
+			continue
+		}
+
+		parts := strings.Split(key, "_")
+		if len(parts) != 3 {
+			continue
+		}
+
+		numStr := parts[2]
+		num, err := strconv.Atoi(numStr)
+		if err != nil {
+			// Ignore keys where the number part is not a valid integer
+			continue
+		}
+
+		if num > maxCut {
+			maxCut = num
+		}
+	}
+
+	nextCut := maxCut + 1
+	return fmt.Sprintf("cut_number_%d", nextCut), nil
+}
+
+func FormatJsonCutData(vectorialClock map[string]int, textContent string) (string, error) {
+	var cutValue CutJsonValue = CutJsonValue{
+		VectorialClock: vectorialClock,
+		TextContent:    textContent,
+	}
+
+	// jsonData, err := json.MarshalIndent(cutValue, "", "  ")
+	jsonData, err := json.Marshal(cutValue)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// wrappedJson := map[string]string{
+	// 	siteActionNumber: string(jsonData),
+	// }
+	// finalJsonData, err := json.MarshalIndent(wrappedJson, "", "  ")
+	// if err != nil {
+	// 	return "", fmt.Errorf("EUFEZUIFGEGZIFGZEerror marshalling wrapped JSON: %w", err)
+	// }
+	display_e("RENDU DU JSON FORMAT" + string(jsonData))
+	return string(jsonData), nil
+}
+
+func MergeJsonStrings(jsoncontent, textcontent string, newkey string) (string, error) {
+	var mapcontent map[string]interface{}
+
+	// Déserialiser les deux chaînes en maps
+	if err := json.Unmarshal([]byte(jsoncontent), &mapcontent); err != nil {
+		return "", fmt.Errorf("erreur de parsing du premier JSON: %w", err)
+	}
+
+	mapcontent[newkey] = textcontent
+	// Convertir le JSON fusionné en string
+	mergedJsonBytes, err := json.MarshalIndent(mapcontent, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("erreur de re-conversion en JSON: %w", err)
+	}
+
+	return string(mergedJsonBytes), nil
 }
