@@ -25,22 +25,31 @@ import (
 // message types
 const (
 	// message types to be sent to controler
-	MsgAppRequest string = "rqa" // request critical section
-	MsgAppRelease string = "rla" // release critical section
-	MsgAppDied    string = "apd" // notify the controller that the app has been closed
+	MsgAppRequest   string = "rqa" // request critical section
+	MsgAppRelease   string = "rla" // release critical section
+	MsgCut          string = "cut" // save the vectorial clock value
+	MsgAppDied      string = "apd" // notify the controller that the app has been closed
+	MsgJsonResponse string = "jco" // json data for cut completed, ready to save
+	ContentResponse string = "crp" // response with content for cut
 
 	// message types to be receive from controler
 	MsgAppStartSc        string = "ssa"  // start critical section
 	MsgAppUpdate         string = "upa"  // update critical section
 	MsgReturnInitialText string = "ret"  // return the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
+	ContentRequest       string = "cqr"  // request content for cut
+
 )
 
 // message fields
 const (
 	TypeField               string = "typ" // type of message
 	UptField                string = "upt" // content of update for application
+	cutNumber               string = "cnb" // number of next cut
+	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
 	SiteIdField             string = "sid" // site id of sender
+	JsonCutData             string = "jcd" // json data to add into cut file
+	CutInitiator            string = "cti" // initiator of the cut request
 )
 
 var outputDir *string = flag.String("o", "./output", "output directory")
@@ -56,7 +65,8 @@ var id *string = flag.String("id", "0", "id of site")
 var mutex = &sync.Mutex{}
 
 var (
-	localSaveFilePath string                                          //path to the local save of the shared file in a log format
+	localSaveFilePath string //path to the local save of the shared file in a log format
+	// localCutFilePath  string = fmt.Sprintf("%s/cut.json", *outputDir) //path to the cuts file TODO SUPRIMER
 )
 
 var (
@@ -66,6 +76,7 @@ var (
 )
 
 var (
+	cut  bool = false //true if the cut button has been pressed
 	// Channel to signal goroutines to stop
 	stopChan = make(chan struct{})
 )
@@ -158,7 +169,17 @@ func send(textArea *widget.Entry) {
 		mutex.Lock()
 		cur := textArea.Text // current text displayed on the Fyne UI
 
-		if sectionAccess {
+		if cut {
+			// if the cut button has been pressed we process it and communicate with controller
+			cut = false
+			var currentText string = getCurrentTextContentFormated()
+			// nextCutNumber, _ := GetNextCutNumber(localCutFilePath) TODO : DEPLACE INTO CONTROLEUR
+			sndmsg = msg_format(TypeField, MsgCut) +
+				// msg_format(cutNumber, nextCutNumber) + TODO : DEPLACE INTO CONTROLEUR
+				// msg_format(NumberVirtualClockSaved, strconv.Itoa(0)) + TODO : supprimer
+				msg_format(UptField, currentText)
+
+		} else if sectionAccess {
 			// if the controller has granted access to the critical section
 
 			// local save can be updated with user modifications
@@ -273,6 +294,16 @@ func receive(textArea *widget.Entry) {
 
 			display_d("Critical section updated")
 
+		case ContentRequest:
+			// send the local text content to the controleur for cut
+			waveInitator := findval(rcvmsg, CutInitiator, true)
+			var currentText string = getCurrentTextContentFormated()
+
+			var sndmsg string = msg_format(TypeField, ContentResponse) +
+				msg_format(CutInitiator, waveInitator) +
+				msg_format(UptField, currentText)
+
+			fmt.Println(sndmsg) // send the content to controleur
 		}
 		mutex.Unlock()
 		rcvmsg = ""
@@ -315,8 +346,17 @@ func initUI() (fyne.Window, *widget.Entry) {
 	scrollable := container.NewScroll(textContainer)
 	scrollable.SetMinSize(fyne.NewSize(600, 400))
 
-	// Bottom of window
-	content = container.NewBorder(nil, nil, nil, nil, scrollable)
+	// "Cut" button
+	cutBtn := widget.NewButton("Cut", func() {
+		mutex.Lock()
+		defer mutex.Unlock()
+		cut = true
+	})
+
+	// Bottom of window depending
+	bottomButtons := container.NewHBox(cutBtn)
+	content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
+
 
 	// Set the content
 	myWindow.SetContent(content)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -21,6 +22,9 @@ const (
 	MsgRequestSc           string = "rqs" // request critical section
 	MsgReleaseSc           string = "rls" // release critical section
 	MsgReceiptSc           string = "rcs" // receipt of critical section
+	MsgCut                 string = "cut" // give the vectorial clock value
+	MsgJsonRequest         string = "jqr" // request json data for cut
+	MsgReceiptCut          string = "rcp" // json data for cut completed, ready to save
 
 	// message types to interact with the application
 	MsgAppRequest        string = "rqa"  // request critical section
@@ -30,18 +34,27 @@ const (
 	MsgReturnInitialText string = "ret"  // give the initial common text content to the site
 	MsgReturnText        string = "ret2" // give the current text content to the site
 	MsgAppDied           string = "apd"  // notify the controller that the app has been closed
+	ContentRequest       string = "cqr"  // request content for cut
+	ContentResponse      string = "crp"  // response with content for cut
+
 )
 
 // message fields
 const (
-	TypeField       string = "typ" // type of message
-	UptField        string = "upt" // content of update for application
-	StampField      string = "stp" // site stamp value
-	SiteIdField     string = "sid" // site id of sender
-	SiteIdDestField string = "did" // site id of destination
-	KnownSiteList   string = "ksl" // list of sites to add to estampille tab
-	SitesToAdd      string = "sta" // list of sites to add to the next release message
-	CloseSiteField  string = "cls" // close site field
+	TypeField               string = "typ" // type of message
+	UptField                string = "upt" // content of update for application
+	StampField              string = "stp" // site stamp value
+	SiteIdField             string = "sid" // site id of sender
+	SiteIdDestField         string = "did" // site id of destination
+	VectorialClockField     string = "vcl" // vectorial clock value
+	cutNumber               string = "cnb" // number of next cut //TODO SHOULD BE DEPLACE IN THIS SECTION
+	NumberVirtualClockSaved string = "nbv" // number of virtual clock saved
+	KnownSiteList           string = "ksl" // list of sites to add to estampille tab
+	SitesToAdd              string = "sta" // list of sites to add to the next release message
+	CloseSiteField          string = "cls" // close site field
+	JsonCutData             string = "jcd" // json data to add into cut file
+	CutInitiator            string = "cti" // initiator of the cut request
+	KeyCut                  string = "kct" // key of the cut in the json file
 )
 
 var (
@@ -50,14 +63,34 @@ var (
 	s  int     = 0
 )
 
+// var text string = ""
+
+var (
+	outputDir        *string = flag.String("o", "./output", "output directory")
+	localCutFilePath string
+)
+
+type CutJsonValue struct {
+	VectorialClock map[string]int `json:"vectorialClock"`
+	TextContent    string         `json:"textContent"`
+}
+
+// var nextCutJsonContent map[string]map[string]string
+var nextCutJsonContent = make(map[string]map[string]string)
+var nbcut string
+
 func main() {
 	flag.Parse()
-
-	var sndmsg string                      // message to be sent
-	var rcvtyp string                      // type of the received message
-	var rcvmsg string                      // received message
-	var stamprcv int                       // received stamp
-	var idrcv string                       // id of the controller who sent the received message
+	localCutFilePath = fmt.Sprintf("%s/%s_cut.json", *outputDir, *id)
+	var sndmsg string // message to be sent
+	var rcvtyp string // type of the received message
+	var rcvmsg string // received message
+	// var vcrcv []int = make([]int, *N)
+	var vcrcv map[string]int = make(map[string]int)          // received vectorial clock
+	var stamprcv int                                         // received stamp
+	var idrcv string                                         // id of the controller who sent the received message
+	var vectorialClock map[string]int = make(map[string]int) // vectorial clock initialized to 0
+	vectorialClock[*id] = 0
 	var currentAction int = 0              // action counter
 	var idToAddNetworkNextRelease []string // id of the site to add to the next release message
 	var applicationClosed bool = false     // flag to indicate if the application is closed
@@ -67,6 +100,14 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
+
+		// transform the vectorial clock into a json at the beginning of the loop
+		// to avoid nill/undefined jsonVc value
+		jsonVc, err := json.Marshal(vectorialClock)
+
+		if err != nil {
+			display_e("JSON encoding error: " + err.Error())
+		}
 
 		rcvmsgRaw, err := reader.ReadString('\n')
 		if err != nil {
@@ -90,21 +131,35 @@ func main() {
 		}
 
 		idrcv = findval(rcvmsg, SiteIdField, false)
-		// idrcv, _ = strconv.Atoi(s_id)
-		// if idrcv == *id {
-		// 	display_e("Invalid site id received")
-		// 	continue
-		// }
 
 		s_destid := findval(rcvmsg, SiteIdDestField, false)
 		// destidrcv, _ = strconv.Atoi(s_destid)
 
 		// if the message is a Receipt and is not for this site, ignore it
-		if rcvtyp != MsgReceiptSc || s_destid == *id {
+		if (rcvtyp != MsgReceiptSc && rcvtyp != MsgReceiptCut) || s_destid == *id { //TODO Les messages qui ne sont pas destiné incrémente pas l'horloge
 
 			// update the stamp of the site
 			s = resetStamp(s, stamprcv)
 
+			// get a possible vectorial clock from the message
+			tmp_vcrc := findval(rcvmsg, VectorialClockField, false)
+
+			if tmp_vcrc != "" {
+
+				// update the vectorial clock if the message is not from the application
+				var err error
+				err = json.Unmarshal([]byte(tmp_vcrc), &vcrcv)
+				if err != nil {
+					display_e(rcvmsg + " : Error unmarshalling vectorial clock: " + err.Error())
+				}
+
+				// update the vectorial clock
+				vectorialClock = updateVectorialClock(vectorialClock, vcrcv, *id)
+				jsonVc, err = json.Marshal(vectorialClock)
+				if err != nil {
+					display_e("JSON encoding error: " + err.Error())
+				}
+			}
 		}
 
 		sndmsg = ""
@@ -169,7 +224,8 @@ func main() {
 
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, *id)
+					msg_format(SiteIdField, *id) +
+					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Requesting critical section (to at least add site to network)")
 			}
 
@@ -183,7 +239,8 @@ func main() {
 
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, *id)
+					msg_format(SiteIdField, *id) +
+					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Requesting critical section (to at least send modification in shared text)")
 			}
 
@@ -204,6 +261,7 @@ func main() {
 				msg_format(StampField, strconv.Itoa(s)) +
 				msg_format(UptField, msg) +
 				msg_format(SiteIdField, *id) +
+				msg_format(VectorialClockField, string(jsonVc)) +
 				msg_format(SitesToAdd, string(jsonIdToAdd)) +
 				msg_format(CloseSiteField, strconv.FormatBool(applicationClosed))
 
@@ -222,7 +280,8 @@ func main() {
 				sndmsg = msg_format(TypeField, MsgReceiptSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
 					msg_format(SiteIdField, *id) +
-					msg_format(SiteIdDestField, idrcv)
+					msg_format(SiteIdDestField, idrcv) +
+					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Sending receipt")
 
 			}
@@ -312,17 +371,87 @@ func main() {
 
 				sndmsg = msg_format(TypeField, MsgRequestSc) +
 					msg_format(StampField, strconv.Itoa(s)) +
-					msg_format(SiteIdField, *id)
+					msg_format(SiteIdField, *id) +
+					msg_format(VectorialClockField, string(jsonVc))
 				display_d("Requesting critical section (to at least quit the application)")
 			}
 
-		}
+		// This message is sent by the site to request a cut
+		// It is then propagated to other controllers
+		case MsgCut: // add to wave expedition
 
+			var textContent string = findval(rcvmsg, UptField, true)
+			siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
+
+			nbcut, _ = GetNextCutNumber(localCutFilePath)
+			finalJsonData, _ := FormatJsonCutData(vectorialClock, textContent)
+
+			if _, ok := nextCutJsonContent[nbcut]; !ok {
+				nextCutJsonContent[nbcut] = make(map[string]string)
+			}
+			nextCutJsonContent[nbcut][siteActionNumber] = finalJsonData
+			sndmsg = msg_format(TypeField, MsgJsonRequest) +
+
+				msg_format(SiteIdField, *id) +
+				msg_format(CutInitiator, *id)
+			display_d("Cut message received, START WAVE!")
+
+		case MsgJsonRequest:
+			// ask the text content to the application
+			waveInitator := findval(rcvmsg, CutInitiator, true)
+
+			if *id != waveInitator {
+				sndmsg = msg_format(TypeField, ContentRequest) +
+					msg_format(CutInitiator, waveInitator)
+			}
+
+		case ContentResponse: //SiteIdDestField
+			// receive the text content from the application*
+			textContent := findval(rcvmsg, UptField, true)
+			waveInitator := findval(rcvmsg, CutInitiator, true)
+
+			siteActionNumber := fmt.Sprintf("site_%s_action_%d", *id, currentAction+1)
+			formatJsonTextContent, _ := FormatJsonCutData(vectorialClock, textContent)
+
+			sndmsg = msg_format(TypeField, MsgReceiptCut) +
+				msg_format(SiteIdField, *id) +
+				msg_format(KeyCut, siteActionNumber) +
+				msg_format(JsonCutData, formatJsonTextContent) +
+				msg_format(SiteIdDestField, waveInitator) // send the response to the wave initiator
+
+		case MsgReceiptCut:
+			if s_destid == *id && idrcv != *id { // if the message is for this site and not from itself
+
+				// received a response from the wave
+				receiviedJsonData := findval(rcvmsg, JsonCutData, true)
+				receivedKeyCut := findval(rcvmsg, KeyCut, true)
+
+				nextCutJsonElement := make(map[string]string)
+				nextCutJsonElement[receivedKeyCut] = receiviedJsonData
+
+				if _, ok := nextCutJsonContent[nbcut]; !ok {
+					nextCutJsonContent[nbcut] = make(map[string]string)
+				}
+
+				nextCutJsonContent[nbcut][receivedKeyCut] = receiviedJsonData
+				count := len(nextCutJsonContent[nbcut]) // count the number of sites that have responded to the wave
+				if count == len(tab) {                  // if all sites have responded to the wave
+					display_d("All sites have responded to the wave, saving cut data !!")
+					// convert json data into string
+					stringData, err := json.Marshal(nextCutJsonContent[nbcut])
+					if err != nil {
+						log.Fatal(err)
+					}
+
+					nbcut, _ := GetNextCutNumber(localCutFilePath)
+					saveCutJson(nbcut, localCutFilePath, string(stringData)) // save the cut json data to the file
+				}
+			}
+		}
 		// send message to successor
 		if sndmsg != "" {
 			currentAction++
 			fmt.Println(sndmsg)
 		}
-
 	}
 }
