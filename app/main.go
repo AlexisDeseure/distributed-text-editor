@@ -57,8 +57,6 @@ const autoSaveInterval = 500 * time.Millisecond
 var filename *string = flag.String("f", "New document", "name of the file to edit")
 var id *string = flag.String("id", "0", "id of site")
 
-var debug *bool = flag.Bool("debug", false, "enable debug mode (manual save)")
-
 var mutex = &sync.Mutex{}
 
 var (
@@ -74,8 +72,6 @@ var (
 
 var (
 	cut  bool = false //true if the cut button has been pressed
-	save bool = false //true if the save button has been pressed
-
 	// Channel to signal goroutines to stop
 	stopChan = make(chan struct{})
 )
@@ -161,9 +157,7 @@ func send(textArea *widget.Entry) {
 	var sndmsg string
 
 	for {
-		if !*debug { // Saving interval if we are not in debug mode
-			time.Sleep(autoSaveInterval)
-		}
+		time.Sleep(autoSaveInterval) // Wait for the next autosave interval
 
 		sndmsg = ""
 
@@ -180,9 +174,8 @@ func send(textArea *widget.Entry) {
 				msg_format(NumberVirtualClockSaved, strconv.Itoa(0)) +
 				msg_format(UptField, currentText)
 
-		} else if sectionAccess && (!*debug || save) {
-			// if the controller has granted access to the critical section and we can save
-			save = false
+		} else if sectionAccess {
+			// if the controller has granted access to the critical section
 
 			// local save can be updated with user modifications
 			newTextDiffs := utils.ComputeDiffs(lastText, cur)
@@ -213,7 +206,7 @@ func send(textArea *widget.Entry) {
 			sectionAccessRequested = false
 			display_d("Critical section released")
 
-		} else if (cur != lastText) && (!sectionAccessRequested) && (!*debug || save) {
+		} else if (cur != lastText) && (!sectionAccessRequested) {
 			// Request access to the critical section if the text has changed
 			sectionAccessRequested = true
 			sndmsg = msg_format(TypeField, MsgAppRequest)
@@ -345,19 +338,10 @@ func initUI() (fyne.Window, *widget.Entry) {
 		cut = true
 	})
 
-	// Bottom of window depending on debug mode
-	if *debug {
-		saveBtn := widget.NewButton("Save", func() {
-			mutex.Lock()
-			defer mutex.Unlock()
-			save = true
-		})
-		bottomButtons := container.NewHBox(saveBtn, cutBtn)
-		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
-	} else {
-		bottomButtons := container.NewHBox(cutBtn)
-		content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
-	}
+	// Bottom of window depending
+	bottomButtons := container.NewHBox(cutBtn)
+	content = container.NewBorder(nil, bottomButtons, nil, nil, scrollable)
+
 
 	// Set the content
 	myWindow.SetContent(content)

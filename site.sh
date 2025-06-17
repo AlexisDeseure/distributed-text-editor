@@ -2,7 +2,6 @@
 
 # Default values
 TARGET_ADDRESSES=""
-APP_DEBUG_VALUE="false" # Changed from DEBUG_MODE="", and default to "false"
 FIFO_DIR="/tmp"
 PORT=9000
 OUTPUTS_DIR="$PWD/output"
@@ -31,10 +30,6 @@ while [[ $# -gt 0 ]]; do
             TARGET_ADDRESSES="$2"
             shift 2
             ;;
-        --debug)
-            APP_DEBUG_VALUE="true" # Set to "true" if --debug is passed
-            shift
-            ;;
         --fifo-dir)
             FIFO_DIR="$2"
             shift 2
@@ -55,7 +50,6 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo "  -d, --document NAME     Document name"
             echo "  -t, --targets ADDRS     Target addresses (comma-separated host:port)"
-            echo "      --debug             Enable debug mode"
             echo "      --fifo-dir DIR      Directory for FIFOs (default: /tmp)"
             echo "      --output-dir DIR    Directory for outputs (default: ./output)"
             echo "      --port PORT         Port for site (default: 9000)"
@@ -63,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -h, --help              Show this help"
             echo ""
             echo "Example:"
-            echo "  $0 --document mydoc --targets localhost:8080,192.168.1.10:9000 --debug"
+            echo "  $0 --document mydoc --targets localhost:8080,192.168.1.10:9000"
             exit 0
             ;;
         *)
@@ -83,7 +77,6 @@ fi
 echo "Configuration:"
 echo "  Document: $DOCUMENT_NAME"
 echo "  Targets: $TARGET_ADDRESSES"
-echo "  Debug mode: $APP_DEBUG_VALUE" # Reflecting the new variable's meaning
 echo "  FIFO directory: $FIFO_DIR"
 echo "  Output directory: $OUTPUTS_DIR"
 echo "  Port: $PORT"
@@ -148,7 +141,7 @@ done
 NETWORK_PID=$!
 "$PWD/build/controler" -id "$TIMESTAMP_ID" < "$FIFO_DIR/${TIMESTAMP_ID}_in_2" > "$FIFO_DIR/${TIMESTAMP_ID}_out_2" &
 CONTROLER_PID=$!
-"$PWD/build/app" -id "$TIMESTAMP_ID" -o "$OUTPUTS_DIR" -f "$DOCUMENT_NAME" "-debug=${APP_DEBUG_VALUE}" < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
+"$PWD/build/app" -id "$TIMESTAMP_ID" -o "$OUTPUTS_DIR" -f "$DOCUMENT_NAME" < "$FIFO_DIR/${TIMESTAMP_ID}_in_3" > "$FIFO_DIR/${TIMESTAMP_ID}_out_3" &
 APP_PID=$!
 
 # start tee and cat to redirect outputs

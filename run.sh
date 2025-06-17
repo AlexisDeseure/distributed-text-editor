@@ -5,7 +5,6 @@ export LANG=en_US.UTF-8
 
 # Default values
 NUM_SITES=""
-DEBUG_MODE="false"
 FIFO_DIR="/tmp"
 OUTPUTS_DIR="$PWD/output"
 BASE_PORT=9000
@@ -23,10 +22,6 @@ while [[ $# -gt 0 ]]; do
         -n|--num-sites)
             NUM_SITES="$2"
             shift 2
-            ;;
-        --debug)
-            DEBUG_MODE="true"
-            shift
             ;;
         --fifo-dir)
             FIFO_DIR="$2"
@@ -51,7 +46,6 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo "  -n, --num-sites NUM     Number of sites to create"
-            echo "      --debug             Enable debug mode for all sites"
             echo "      --fifo-dir DIR      Directory for FIFOs (default: /tmp)"
             echo "      --output-dir DIR    Directory for outputs (default: ./output)"
             echo "      --base-port PORT    Base port number (default: 9000)"
@@ -60,7 +54,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -h, --help              Show this help"
             echo ""
             echo "Example:"
-            echo "  $0 --num-sites 5 --debug --max-targets 2"
+            echo "  $0 --num-sites 5 --max-targets 2"
             exit 0
             ;;
         *)
@@ -85,7 +79,6 @@ fi
 # Display configuration
 echo "Configuration:"
 echo "  Number of sites: $NUM_SITES"
-echo "  Debug mode: $DEBUG_MODE"
 echo "  FIFO directory: $FIFO_DIR"
 echo "  Output directory: $OUTPUTS_DIR"
 echo "  Base port: $BASE_PORT"
@@ -223,10 +216,6 @@ for ((i=0; i<NUM_SITES; i++)); do
     
     if [ ! -z "$targets" ]; then
         site_cmd="$site_cmd --targets \"$targets\""
-    fi
-    
-    if [ "$DEBUG_MODE" = "true" ]; then
-        site_cmd="$site_cmd --debug"
     fi
     
     echo "  Command: $site_cmd"
